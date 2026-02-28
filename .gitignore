@@ -1,0 +1,23 @@
+# Ignorar conteúdo das pastas de processamento, mas manter a estrutura
+/entrada de arquivos/*
+!/entrada de arquivos/.gitkeep
+
+/saida de arquivos/*
+!/saida de arquivos/.gitkeep
+
+/arquivos_excel/*
+!/arquivos_excel/.gitkeep
+
+/arquivos_ofx/*
+!/arquivos_ofx/.gitkeep
+
+/arquivos_pdf/*
+!/arquivos_pdf/.gitkeep
+
+# Ignorar o arquivo real de senhas e licenças
+credenciais.py
+
+# Ignorar arquivos de build e executaveis
+dist/
+build/
+*.spec
