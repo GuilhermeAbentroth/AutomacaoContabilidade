@@ -1,3 +1,4 @@
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import scrolledtext, filedialog
 import threading
@@ -8,19 +9,33 @@ class EmissorBethaModulo:
         self.parent = parent
         self.container = parent.container
 
+    # =========================================================================
+    # UI COM CUSTOM TKINTER
+    # =========================================================================
     def tela_emissor_betha(self):
         self.parent.limpar_tela()
 
-        f_top = tk.Frame(self.container, pady=10)
-        f_top.pack()
-        tk.Label(f_top, text="Emissor NFSE - Betha (Em Lote)", font=("Arial", 16, "bold"), fg="#8e44ad").pack()
+        # Logo no topo
+        f_l = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_l.pack(pady=10)
+        self.parent.carregar_logo(f_l)
+
+        # Título da tela
+        ctk.CTkLabel(self.container, text="Emissor NFSE - Betha (Em Lote)", font=("Arial", 22, "bold"),
+                     text_color="#8e44ad").pack(pady=(0, 10))
+
+        # Card de Formulários
+        f_card = ctk.CTkFrame(self.container)
+        f_card.pack(fill="x", padx=40, pady=10)
 
         # --- LINHA 1: SELEÇÃO DA PLANILHA EXCEL ---
-        f_excel = tk.Frame(self.container, pady=5)
-        f_excel.pack(fill="x", padx=20)
-        tk.Label(f_excel, text="Planilha Base (CNPJ e Valor):", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        f_excel = ctk.CTkFrame(f_card, fg_color="transparent")
+        f_excel.pack(fill="x", padx=20, pady=(20, 10))
 
-        self.ent_excel_nfse = tk.Entry(f_excel, font=("Arial", 10), width=60)
+        ctk.CTkLabel(f_excel, text="Planilha Base:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(
+            side=tk.LEFT)
+
+        self.ent_excel_nfse = ctk.CTkEntry(f_excel, font=("Arial", 12), width=450)
         self.ent_excel_nfse.pack(side=tk.LEFT, padx=10)
 
         def selecionar_planilha():
@@ -29,37 +44,48 @@ class EmissorBethaModulo:
                 self.ent_excel_nfse.delete(0, tk.END)
                 self.ent_excel_nfse.insert(0, p)
 
-        tk.Button(f_excel, text="Selecionar", command=selecionar_planilha, bg="#eee").pack(side=tk.LEFT)
+        ctk.CTkButton(f_excel, text="Procurar", command=selecionar_planilha, width=100).pack(side=tk.LEFT, padx=5)
 
-        # --- LINHA 2: CREDENCIAIS DE LOGIN (NOVO) ---
-        f_login = tk.Frame(self.container, pady=5)
-        f_login.pack(fill="x", padx=20)
+        # --- LINHA 2: CREDENCIAIS DE LOGIN ---
+        f_login = ctk.CTkFrame(f_card, fg_color="transparent")
+        f_login.pack(fill="x", padx=20, pady=(10, 20))
 
-        tk.Label(f_login, text="Usuário:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-        self.ent_usuario = tk.Entry(f_login, font=("Arial", 10), width=25)
+        ctk.CTkLabel(f_login, text="Usuário:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(side=tk.LEFT)
+        self.ent_usuario = ctk.CTkEntry(f_login, font=("Arial", 12), width=180)
         self.ent_usuario.pack(side=tk.LEFT, padx=10)
 
-        tk.Label(f_login, text="Senha:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
-        self.ent_senha = tk.Entry(f_login, font=("Arial", 10), width=25, show="*")  # show="*" oculta a senha
+        ctk.CTkLabel(f_login, text="Senha:", font=("Arial", 12, "bold"), width=60, anchor="e").pack(side=tk.LEFT,
+                                                                                                    padx=(20, 10))
+        self.ent_senha = ctk.CTkEntry(f_login, font=("Arial", 12), width=180, show="*")  # show="*" oculta a senha
         self.ent_senha.pack(side=tk.LEFT, padx=10)
 
         # --- CAIXA DE LOGS ---
-        f_log = tk.Frame(self.container, padx=20, pady=10)
-        f_log.pack(fill="both", expand=True)
-        self.parent.txt_log = scrolledtext.ScrolledText(f_log, width=100, height=12, state='disabled')
-        self.parent.txt_log.pack(pady=5)
+        f_log_area = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_log_area.pack(fill="both", expand=True, padx=40, pady=5)
+
+        # Mantendo o ScrolledText mas com cores que combinam com o CustomTkinter
+        self.parent.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=12, state='disabled',
+                                                        bg="#1e1e1e", fg="white", font=("Consolas", 10))
+        self.parent.txt_log.pack(fill="both", expand=True)
 
         # --- BOTÕES DE AÇÃO ---
-        f_btns = tk.Frame(self.container)
-        f_btns.pack(pady=10)
-        tk.Button(f_btns, text="Acessar Sistema e Emitir", command=self.start_thread, bg="#8e44ad", fg="white",
-                  font=("Arial", 12, "bold"), width=25, height=2).pack(side=tk.LEFT, padx=10)
-        tk.Button(f_btns, text="Voltar", command=self.parent.mostrar_menu_inicial, bg="#666", fg="white", width=15,
-                  height=2).pack(side=tk.LEFT)
+        f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_btns.pack(pady=20)
+
+        ctk.CTkButton(f_btns, text="▶ ACESSAR SISTEMA E EMITIR", command=self.start_thread,
+                      fg_color="#8e44ad", hover_color="#732d91", font=("Arial", 14, "bold"), height=50, width=350).pack(
+            side="left", padx=20)
+
+        ctk.CTkButton(f_btns, text="Voltar Menu", command=self.parent.mostrar_menu_inicial,
+                      fg_color="gray", hover_color="darkgray", font=("Arial", 14), height=50, width=150).pack(
+            side="left")
 
     def start_thread(self):
         threading.Thread(target=self.executar_automacao, daemon=True).start()
 
+    # =========================================================================
+    # LÓGICA DE AUTOMAÇÃO (MANTIDA INTACTA)
+    # =========================================================================
     def executar_automacao(self):
         import pandas as pd
         from playwright.sync_api import sync_playwright

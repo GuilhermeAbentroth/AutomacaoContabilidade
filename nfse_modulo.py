@@ -1,3 +1,4 @@
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import scrolledtext, messagebox, filedialog
 import os
@@ -370,11 +371,18 @@ class PortalNacionalModulo:
         except Exception as e:
             log_func(f"ERRO GERAL: {str(e)}", "erro")
 
+    # =========================================================================
+    # UI COM CUSTOM TKINTER
+    # =========================================================================
     def tela_nfse(self):
         self.parent.limpar_tela()
-        f_l = tk.Frame(self.container, pady=10);
-        f_l.pack();
+
+        # Logo
+        f_l = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_l.pack(pady=10)
         self.parent.carregar_logo(f_l)
+
+        # Regras de Data Padrão
         hoje = date.today()
         if hoje.month == 1:
             mes_ant, ano_ant = 12, hoje.year - 1
@@ -383,40 +391,73 @@ class PortalNacionalModulo:
         dt_ini = date(ano_ant, mes_ant, 1).strftime("%d/%m/%Y")
         dt_fim = date(ano_ant, mes_ant, calendar.monthrange(ano_ant, mes_ant)[1]).strftime("%d/%m/%Y")
 
-        frame_config = tk.LabelFrame(self.container, text=" Configuração ", padx=15, pady=15)
-        frame_config.pack(padx=20, pady=10, fill="x")
-        f_datas = tk.Frame(frame_config);
-        f_datas.pack(fill="x", pady=5)
-        tk.Label(f_datas, text="Início:").grid(row=0, column=0)
-        self.ent_data_ini = tk.Entry(f_datas, width=12);
-        self.ent_data_ini.grid(row=0, column=1, padx=5);
+        # Container Principal de Configuração (Substitui o LabelFrame antigo)
+        frame_config = ctk.CTkFrame(self.container)
+        frame_config.pack(padx=40, pady=10, fill="x")
+
+        # Título do Frame
+        ctk.CTkLabel(frame_config, text="Configuração", font=("Arial", 14, "bold")).pack(anchor="w", padx=15,
+                                                                                         pady=(10, 0))
+
+        # Box de Datas
+        f_datas = ctk.CTkFrame(frame_config, fg_color="transparent")
+        f_datas.pack(fill="x", padx=15, pady=5)
+
+        ctk.CTkLabel(f_datas, text="Início:", font=("Arial", 12)).grid(row=0, column=0, padx=(0, 5))
+        self.ent_data_ini = ctk.CTkEntry(f_datas, width=120)
+        self.ent_data_ini.grid(row=0, column=1, padx=5)
         self.ent_data_ini.insert(0, dt_ini)
-        tk.Label(f_datas, text="Fim:").grid(row=0, column=2, padx=10)
-        self.ent_data_fim = tk.Entry(f_datas, width=12);
-        self.ent_data_fim.grid(row=0, column=3, padx=5);
+
+        ctk.CTkLabel(f_datas, text="Fim:", font=("Arial", 12)).grid(row=0, column=2, padx=(15, 5))
+        self.ent_data_fim = ctk.CTkEntry(f_datas, width=120)
+        self.ent_data_fim.grid(row=0, column=3, padx=5)
         self.ent_data_fim.insert(0, dt_fim)
 
-        tk.Label(frame_config, text="Pasta Salvar:").pack(anchor="w", pady=(10, 0))
-        f_path = tk.Frame(frame_config);
-        f_path.pack(fill="x")
-        self.ent_caminho = tk.Entry(f_path, font=("Arial", 10));
+        # Box de Caminho (Pasta)
+        ctk.CTkLabel(frame_config, text="Pasta Salvar:", font=("Arial", 12)).pack(anchor="w", padx=15, pady=(5, 0))
+
+        f_path = ctk.CTkFrame(frame_config, fg_color="transparent")
+        f_path.pack(fill="x", padx=15, pady=(0, 15))
+
+        self.ent_caminho = ctk.CTkEntry(f_path, font=("Arial", 12))
         self.ent_caminho.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 10))
         self.ent_caminho.insert(0, self.parent.configuracoes.get("ultimo_caminho", ""))
-        tk.Button(f_path, text="Selecionar", command=self.selecionar_pasta).pack(side=tk.RIGHT)
 
-        self.parent.txt_log = scrolledtext.ScrolledText(self.container, width=125, height=15, state='disabled',
-                                                        font=("Consolas", 9))
-        self.parent.txt_log.pack(padx=20, pady=5)
+        ctk.CTkButton(f_path, text="Selecionar", command=self.selecionar_pasta, width=100).pack(side=tk.RIGHT)
 
-        f_btns = tk.Frame(self.container, pady=10);
-        f_btns.pack()
-        tk.Button(f_btns, text="1. ACESSAR", command=lambda: self.abrir_portal_nacional(self.parent.log_msg),
-                  bg="#005A9C", fg="white", font=("Arial", 9, "bold"), height=2, width=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(f_btns, text="2. DESTINADAS", command=lambda: self.iniciar_automacao_geral(self.parent.log_msg, 1),
-                  bg="#228B22", fg="white", font=("Arial", 9, "bold"), height=2, width=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(f_btns, text="3. EMITIDAS", command=lambda: self.iniciar_automacao_geral(self.parent.log_msg, 2),
-                  bg="#f39200", fg="white", font=("Arial", 9, "bold"), height=2, width=15).pack(side=tk.LEFT, padx=5)
-        tk.Button(f_btns, text="PARAR", command=self.interromper_processo, bg="#CC0000", fg="white",
-                  font=("Arial", 9, "bold"), height=2, width=12).pack(side=tk.LEFT, padx=5)
-        tk.Button(f_btns, text="Voltar", command=self.parent.mostrar_menu_inicial, bg="#666", fg="white",
-                  font=("Arial", 9, "bold"), height=2, width=10).pack(side=tk.LEFT, padx=5)
+        # Log
+        f_log_area = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_log_area.pack(fill="both", expand=True, padx=40, pady=5)
+
+        self.parent.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=15, state='disabled',
+                                                        bg="#1e1e1e", fg="white", font=("Consolas", 10))
+        self.parent.txt_log.pack(fill="both", expand=True)
+
+        # Botões de Ação
+        f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_btns.pack(pady=20)
+
+        btn_font = ("Arial", 12, "bold")
+        btn_h = 40
+        btn_w = 140
+
+        ctk.CTkButton(f_btns, text="1. ACESSAR", command=lambda: self.abrir_portal_nacional(self.parent.log_msg),
+                      fg_color="#005A9C", hover_color="#00467a", font=btn_font, height=btn_h, width=btn_w).pack(
+            side="left", padx=5)
+
+        ctk.CTkButton(f_btns, text="2. DESTINADAS",
+                      command=lambda: self.iniciar_automacao_geral(self.parent.log_msg, 1),
+                      fg_color="#228B22", hover_color="#1e7a1e", font=btn_font, height=btn_h, width=btn_w).pack(
+            side="left", padx=5)
+
+        ctk.CTkButton(f_btns, text="3. EMITIDAS", command=lambda: self.iniciar_automacao_geral(self.parent.log_msg, 2),
+                      fg_color="#f39200", hover_color="#cc7a00", font=btn_font, height=btn_h, width=btn_w).pack(
+            side="left", padx=5)
+
+        ctk.CTkButton(f_btns, text="PARAR", command=self.interromper_processo,
+                      fg_color="#CC0000", hover_color="#a30000", font=btn_font, height=btn_h, width=100).pack(
+            side="left", padx=5)
+
+        ctk.CTkButton(f_btns, text="Voltar", command=self.parent.mostrar_menu_inicial,
+                      fg_color="gray", hover_color="darkgray", font=btn_font, height=btn_h, width=100).pack(side="left",
+                                                                                                            padx=5)
