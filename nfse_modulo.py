@@ -117,9 +117,11 @@ class PortalNacionalModulo:
         if tipo == 1:
             url_alvo = "https://www.nfse.gov.br/EmissorNacional/Notas/Recebidas"
             nome_pasta_mae = "NFSE DESTINADA"
+            prefixo_excel = "SERVICO TOMADO"
         else:
             url_alvo = "https://www.nfse.gov.br/EmissorNacional/Notas/Emitidas"
             nome_pasta_mae = "NFSE EMITIDA"
+            prefixo_excel = "SERVICO PRESTADO"
 
         pasta_raiz = os.path.abspath(os.path.join(strCaminhoBase, nome_pasta_mae))
         os.makedirs(pasta_raiz, exist_ok=True)
@@ -354,12 +356,12 @@ class PortalNacionalModulo:
                     if dados_excel:
                         try:
                             df = pd.DataFrame(dados_excel)
-                            nome_excel = f"Relatorio_Contabil_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
-                            # CORREÇÃO: Salvar direto na pasta raiz (pasta_raiz)
-                            caminho_final_excel = os.path.join(pasta_raiz, nome_excel)
+                            nome_excel = f"{prefixo_excel}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
+                            # CORREÇÃO: Salvar diretamente na raiz informada pelo usuário
+                            caminho_final_excel = os.path.join(strCaminhoBase, nome_excel)
 
                             df.to_excel(caminho_final_excel, index=False)
-                            log_func(f"Excel Contábil gerado em: {pasta_raiz}", "sucesso")
+                            log_func(f"Excel Contábil gerado em: {strCaminhoBase}", "sucesso")
                         except Exception as e_ex:
                             log_func(f"Erro Excel: {e_ex}", "erro")
 
