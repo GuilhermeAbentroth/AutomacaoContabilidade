@@ -76,7 +76,6 @@ class PortalNacionalModulo:
             comando = [
                 chrome_path, "--remote-debugging-port=9222",
                 f"--user-data-dir={self.debug_profile}", "--no-first-run",
-                "--ignore-certificate-errors"
             ]
             subprocess.Popen(comando)
             log_func("Abrindo Chrome em modo Depuração...")
@@ -264,7 +263,7 @@ class PortalNacionalModulo:
 
                 # --- FASE 2: PROCESSAMENTO (PDF + EXCEL) ---
                 if arquivos_para_processar and not self.parar_solicitado:
-                    log_func("Gerando Excel Contábil...", "info", divisor=True)
+                    log_func("Gerando Excel Contábil com Resumo...", "info", divisor=True)
                     dados_excel = []
 
                     for item in arquivos_para_processar:
@@ -357,10 +356,46 @@ class PortalNacionalModulo:
                         try:
                             df = pd.DataFrame(dados_excel)
                             nome_excel = f"{prefixo_excel}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
-                            # CORREÇÃO: Salvar diretamente na raiz informada pelo usuário
                             caminho_final_excel = os.path.join(strCaminhoBase, nome_excel)
 
-                            df.to_excel(caminho_final_excel, index=False)
+                            # CRIAÇÃO DA TABELA DE RESUMO USANDO O MOTOR EXCEL DO FISCAL
+                            with pd.ExcelWriter(caminho_final_excel, engine='xlsxwriter') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Relatorio')
+                                wb, ws = writer.book, writer.sheets['Relatorio']
+
+                                fmt_h = wb.add_format({'bg_color': '#92D050', 'bold': True, 'border': 1})
+                                fmt_m = wb.add_format({'num_format': '#,##0.00'})
+
+                                # Ajustar tamanho das colunas para leitura confortável
+                                ws.set_column('A:B', 15)
+                                ws.set_column('C:D', 40)
+                                ws.set_column('E:F', 20, fmt_m)
+                                ws.set_column('G:H', 15)
+
+                                # Pintar o cabeçalho original
+                                for c, v in enumerate(df.columns): ws.write(0, c, v, fmt_h)
+
+                                last = len(df) + 1
+                                res = len(df) + 3  # Deixar duas linhas de espaço em branco
+
+                                # TABELA DE RESUMO (Geral - Canceladas = Liquido)
+                                ws.write(res, 0, "NFSE")
+                                ws.write_formula(res, 1, f"=SUM(E2:E{last})", fmt_m)
+
+                                ws.write(res + 1, 0, "CANCELADA OU SUBSTITUÍDA")
+                                # A coluna H (índice 7 do Excel, "Status") dita a regra do somatório
+                                ws.write_formula(res + 1, 1,
+                                                 f'=SUMIF(H2:H{last}, "*Cancelada*", E2:E{last}) + SUMIF(H2:H{last}, "*Substitui*", E2:E{last})',
+                                                 fmt_m)
+
+                                ws.write(res + 2, 0, "TOTAL")
+                                ws.write_formula(res + 2, 1, f"=B{res + 1}-B{res + 2}", fmt_m)
+
+                                # Aplica a moldura de tabela do Excel para ficar igual ao Fiscal
+                                ws.add_table(res - 1, 0, res + 2, 1,
+                                             {'header_row': True,
+                                              'columns': [{'header': 'RESUMO NFSE'}, {'header': 'VALOR'}]})
+
                             log_func(f"Excel Contábil gerado em: {strCaminhoBase}", "sucesso")
                         except Exception as e_ex:
                             log_func(f"Erro Excel: {e_ex}", "erro")
