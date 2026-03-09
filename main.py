@@ -283,9 +283,8 @@ class SistemaUnificadoGUI:
             "Versão: 5.7\n"
             "Data da Versão: 28/02/2026\n\n"
             "Notas da Versão:\n"
-            "1. Novo Design Moderno (CustomTkinter).\n"
-            "2. Adicionado bloqueio por licenciamento seguro.\n"
-            "3. Módulo emissor NFSE e C6 Bank implementados.\n"
+            "1. Atualização Portal Nacional.\n"
+
         )
 
         f_info = ctk.CTkFrame(janela, fg_color="transparent")

@@ -68,28 +68,56 @@ class PortalNacionalModulo:
 
     def abrir_portal_nacional(self, log_func):
         chrome_path = self.parent.configuracoes.get("chrome_path")
+        url_login = "https://www.nfse.gov.br/EmissorNacional/Login"
+
         if not chrome_path or not os.path.exists(chrome_path):
             messagebox.showwarning("Atenção", "Configure o caminho do Chrome na engrenagem (⚙).")
             return
-        if not os.path.exists(self.debug_profile): os.makedirs(self.debug_profile)
+
+        if not os.path.exists(self.debug_profile):
+            os.makedirs(self.debug_profile)
+
+        # 1. Se a porta NÃO estiver aberta, o Chrome está fechado.
+        # Vamos abri-lo já passando a URL de login nativamente!
         if not self.verificar_porta_debug():
+            log_func("Abrindo Chrome e acessando o Portal...")
             comando = [
-                chrome_path, "--remote-debugging-port=9222",
-                f"--user-data-dir={self.debug_profile}", "--no-first-run",
+                chrome_path,
+                "--remote-debugging-port=9222",
+                f"--user-data-dir={self.debug_profile}",
+                "--no-first-run",
+                "--start-maximized",
+                url_login
             ]
             subprocess.Popen(comando)
-            log_func("Abrindo Chrome em modo Depuração...")
-            time.sleep(4)
-        log_func("Acesse o portal e aguarde o Dashboard para iniciar.")
+            time.sleep(5)
+            log_func("Aguarde a página carregar e faça o Login.")
+            return
+
+        # 2. Se a porta JÁ ESTIVER aberta (Chrome rodando em debug)
+        log_func("Chrome já está aberto. Tentando redirecionar para o portal...")
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as pw:
                 browser = pw.chromium.connect_over_cdp("http://127.0.0.1:9222")
                 context = browser.contexts[0]
-                pagina = context.pages[0] if context.pages else context.new_page()
-                pagina.goto("https://www.nfse.gov.br/EmissorNacional/Login")
-        except:
-            pass
+
+                # Procura se já tem uma aba do portal Nacional aberta
+                pagina = next((p for p in context.pages if "nfse.gov.br" in p.url), None)
+
+                if pagina:
+                    pagina.bring_to_front()
+                    log_func("Aba do portal já foi encontrada. Acesse o dashboard.")
+                else:
+                    pagina = context.pages[0] if context.pages else context.new_page()
+                    pagina.goto(url_login, timeout=60000)
+                    pagina.bring_to_front()
+                    log_func("Aba redirecionada para o Login.")
+
+                time.sleep(2)
+        except Exception as e:
+            log_func(f"Aviso de conexão: {str(e)[:50]}", "erro")
+            log_func("Dica: Se travou, feche todas as janelas do Chrome e tente ACESSAR novamente.")
 
     def iniciar_automacao_geral(self, log_func, tipo):
         self.parar_solicitado = False
@@ -344,7 +372,15 @@ class PortalNacionalModulo:
                             "Status": subpasta
                         })
 
-                        # Mover
+                        # === CÓPIA PARA PASTA DE RETENÇÃO ===
+                        if retencao == "SIM":
+                            pasta_retencao = os.path.join(pasta_raiz, "Com Retenção")
+                            os.makedirs(pasta_retencao, exist_ok=True)
+                            if os.path.exists(caminho_pdf):
+                                # Usamos copy2 para preservar os metadados do ficheiro (data de criação, etc)
+                                shutil.copy2(caminho_pdf, os.path.join(pasta_retencao, nome_base + ".pdf"))
+
+                        # Mover os originais para as suas subpastas (Normal, Cancelada, etc)
                         pasta_destino = os.path.join(pasta_raiz, subpasta)
                         os.makedirs(pasta_destino, exist_ok=True)
                         if os.path.exists(caminho_pdf): shutil.move(caminho_pdf,
@@ -428,7 +464,7 @@ class PortalNacionalModulo:
         dt_ini = date(ano_ant, mes_ant, 1).strftime("%d/%m/%Y")
         dt_fim = date(ano_ant, mes_ant, calendar.monthrange(ano_ant, mes_ant)[1]).strftime("%d/%m/%Y")
 
-        # Container Principal de Configuração (Substitui o LabelFrame antigo)
+        # Container Principal de Configuração
         frame_config = ctk.CTkFrame(self.container)
         frame_config.pack(padx=40, pady=10, fill="x")
 
