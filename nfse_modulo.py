@@ -308,14 +308,25 @@ class PortalNacionalModulo:
                         prestador = "Não identificado"
                         tomador = "Não identificado"
 
+                        # Variáveis das novas colunas
+                        v_iss_ret = 0.0
+                        v_inss = 0.0
+                        v_csrf = 0.0
+                        v_irrf = 0.0
+                        v_desc = 0.0
+
                         if os.path.exists(caminho_pdf):
                             try:
                                 reader = PdfReader(caminho_pdf)
                                 texto_pdf = ""
-                                for page in reader.pages: texto_pdf += page.extract_text()
-                                texto_upper = texto_pdf.upper()
+                                for page in reader.pages:
+                                    texto_pdf += page.extract_text()
 
-                                # 1. Valores
+                                # Limpa quebras de linha estranhas para ajudar a Regex
+                                texto_upper = texto_pdf.upper().replace("\n", " ")
+                                texto_upper = re.sub(r'\s+', ' ', texto_upper)
+
+                                # 1. Valores Básicos
                                 padrao_valor = r"R\$\s*([\d\.]+,\d{2})"
                                 if "VALOR TOTAL DA NFS-E" in texto_upper:
                                     trecho = texto_upper.split("VALOR TOTAL DA NFS-E")[1][:200]
@@ -327,7 +338,7 @@ class PortalNacionalModulo:
                                     match = re.search(padrao_valor, trecho)
                                     if match: val_liquido = self.converter_valor_br(match.group(1))
 
-                                # 2. Data
+                                # 2. Data e Hora
                                 match_dt_emi = re.search(r"DATA E HORA DA EMISSÃO.*(\d{2}/\d{2}/\d{4})", texto_upper,
                                                          re.IGNORECASE)
                                 if match_dt_emi:
@@ -343,10 +354,52 @@ class PortalNacionalModulo:
                                 # 4. Entidades
                                 if "TOMADOR DO SERVIÇO" in texto_upper:
                                     idx_tomador = texto_upper.find("TOMADOR DO SERVIÇO")
-                                    bloco_prestador = texto_pdf[:idx_tomador]
-                                    bloco_tomador = texto_pdf[idx_tomador:]
+                                    bloco_prestador = texto_upper[:idx_tomador]
+                                    bloco_tomador = texto_upper[idx_tomador:]
                                     prestador = self.extrair_dados_entidade(bloco_prestador)
                                     tomador = self.extrair_dados_entidade(bloco_tomador)
+
+                                # 5. LÓGICA DE RETENÇÕES E DESCONTOS (Com Barreiras Antifraude)
+                                def extrair_valor_imposto(label):
+                                    idx = texto_upper.find(label)
+                                    if idx != -1:
+                                        trecho = texto_upper[idx + len(label): idx + len(label) + 120]
+                                        # Cortar a leitura se bater de frente com outro campo da tabela
+                                        barreiras = [
+                                            "VALOR", "TRIBUTAÇÃO", "IRRF", "CONTRIBUI", "PIS", "COFINS",
+                                            "TOTAL", "RETENÇÃO", "ISSQN", "DESCONTO", "ALÍQUOTA", "MUNICÍPIO",
+                                            "NÚMERO", "REGIME", "BENEFÍCIO", "CÁLCULO", "PAÍS", "SUSPENSÃO",
+                                            "DESCRIÇÃO", "BC ", "INFORMAÇÕES", "TOTAIS", "NBS", "CÓDIGO", "LOCAL"
+                                        ]
+                                        limite = len(trecho)
+                                        for b in barreiras:
+                                            pos = trecho.find(b)
+                                            if pos != -1 and pos < limite:
+                                                limite = pos
+
+                                        trecho_seguro = trecho[:limite]
+                                        m = re.search(r'R\$\s*([\d\.]+,\d{2})', trecho_seguro)
+                                        if m:
+                                            return self.converter_valor_br(m.group(1))
+                                    return 0.0
+
+                                v_inss = extrair_valor_imposto("CONTRIBUIÇÃO PREVIDENCIÁRIA - RETIDA")
+
+                                # CSRF = CSLL + PIS + COFINS
+                                v_csll = extrair_valor_imposto("CONTRIBUIÇÕES SOCIAIS - RETIDAS")
+                                v_pis = extrair_valor_imposto("PIS - DÉBITO APURAÇÃO PRÓPRIA")
+                                v_cofins = extrair_valor_imposto("COFINS - DÉBITO APURAÇÃO PRÓPRIA")
+                                v_csrf = v_csll + v_pis + v_cofins
+
+                                v_irrf = extrair_valor_imposto("IRRF")
+                                v_desc = extrair_valor_imposto("DESCONTO INCONDICIONADO")
+
+                                # Lógica exclusiva do ISS Ret
+                                idx_iss = texto_upper.find("RETENÇÃO DO ISSQN")
+                                if idx_iss != -1:
+                                    trecho_iss = texto_upper[idx_iss: idx_iss + 50]
+                                    if "NÃO RETIDO" not in trecho_iss:
+                                        v_iss_ret = extrair_valor_imposto("ISSQN APURADO")
 
                             except Exception as e_pdf:
                                 print(f"Erro leitura PDF: {e_pdf}")
@@ -360,6 +413,10 @@ class PortalNacionalModulo:
                         else:
                             retencao = "NÃO"
 
+                        # Função auxiliar para ocultar o zero
+                        def formatar_vazio(valor):
+                            return valor if valor > 0 else ""
+
                         # --- EXCEL FINAL (Ordenado) ---
                         dados_excel.append({
                             "Data Emissão": data_emissao,
@@ -368,6 +425,11 @@ class PortalNacionalModulo:
                             "Tomador": tomador,
                             "Valor Serviço (R$)": val_servico,
                             "Valor Líquido (R$)": val_liquido,
+                            "ISS Ret": formatar_vazio(v_iss_ret),
+                            "INSS": formatar_vazio(v_inss),
+                            "CSRF": formatar_vazio(v_csrf),
+                            "IRRF": formatar_vazio(v_irrf),
+                            "Desconto": formatar_vazio(v_desc),
                             "RETENÇÃO": retencao,
                             "Status": subpasta
                         })
@@ -377,10 +439,9 @@ class PortalNacionalModulo:
                             pasta_retencao = os.path.join(pasta_raiz, "Com Retenção")
                             os.makedirs(pasta_retencao, exist_ok=True)
                             if os.path.exists(caminho_pdf):
-                                # Usamos copy2 para preservar os metadados do ficheiro (data de criação, etc)
                                 shutil.copy2(caminho_pdf, os.path.join(pasta_retencao, nome_base + ".pdf"))
 
-                        # Mover os originais para as suas subpastas (Normal, Cancelada, etc)
+                        # Mover
                         pasta_destino = os.path.join(pasta_raiz, subpasta)
                         os.makedirs(pasta_destino, exist_ok=True)
                         if os.path.exists(caminho_pdf): shutil.move(caminho_pdf,
@@ -394,7 +455,7 @@ class PortalNacionalModulo:
                             nome_excel = f"{prefixo_excel}_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
                             caminho_final_excel = os.path.join(strCaminhoBase, nome_excel)
 
-                            # CRIAÇÃO DA TABELA DE RESUMO USANDO O MOTOR EXCEL DO FISCAL
+                            # CRIAÇÃO DA TABELA DE RESUMO USANDO O MOTOR EXCEL
                             with pd.ExcelWriter(caminho_final_excel, engine='xlsxwriter') as writer:
                                 df.to_excel(writer, index=False, sheet_name='Relatorio')
                                 wb, ws = writer.book, writer.sheets['Relatorio']
@@ -405,8 +466,8 @@ class PortalNacionalModulo:
                                 # Ajustar tamanho das colunas para leitura confortável
                                 ws.set_column('A:B', 15)
                                 ws.set_column('C:D', 40)
-                                ws.set_column('E:F', 20, fmt_m)
-                                ws.set_column('G:H', 15)
+                                ws.set_column('E:K', 18, fmt_m)  # Colunas Financeiras e Impostos
+                                ws.set_column('L:M', 18)
 
                                 # Pintar o cabeçalho original
                                 for c, v in enumerate(df.columns): ws.write(0, c, v, fmt_h)
@@ -419,15 +480,14 @@ class PortalNacionalModulo:
                                 ws.write_formula(res, 1, f"=SUM(E2:E{last})", fmt_m)
 
                                 ws.write(res + 1, 0, "CANCELADA OU SUBSTITUÍDA")
-                                # A coluna H (índice 7 do Excel, "Status") dita a regra do somatório
+                                # A coluna M (índice 12 do Excel, "Status") dita a regra do somatório
                                 ws.write_formula(res + 1, 1,
-                                                 f'=SUMIF(H2:H{last}, "*Cancelada*", E2:E{last}) + SUMIF(H2:H{last}, "*Substitui*", E2:E{last})',
+                                                 f'=SUMIF(M2:M{last}, "*Cancelada*", E2:E{last}) + SUMIF(M2:M{last}, "*Substitui*", E2:E{last})',
                                                  fmt_m)
 
                                 ws.write(res + 2, 0, "TOTAL")
                                 ws.write_formula(res + 2, 1, f"=B{res + 1}-B{res + 2}", fmt_m)
 
-                                # Aplica a moldura de tabela do Excel para ficar igual ao Fiscal
                                 ws.add_table(res - 1, 0, res + 2, 1,
                                              {'header_row': True,
                                               'columns': [{'header': 'RESUMO NFSE'}, {'header': 'VALOR'}]})
@@ -445,7 +505,7 @@ class PortalNacionalModulo:
             log_func(f"ERRO GERAL: {str(e)}", "erro")
 
     # =========================================================================
-    # UI COM CUSTOM TKINTER
+    # UI COM CUSTOM TKINTER E MÁSCARA DE DATAS
     # =========================================================================
     def tela_nfse(self):
         self.parent.limpar_tela()
@@ -468,9 +528,35 @@ class PortalNacionalModulo:
         frame_config = ctk.CTkFrame(self.container)
         frame_config.pack(padx=40, pady=10, fill="x")
 
-        # Título do Frame
         ctk.CTkLabel(frame_config, text="Configuração", font=("Arial", 14, "bold")).pack(anchor="w", padx=15,
                                                                                          pady=(10, 0))
+
+        # --- LÓGICA DA MÁSCARA DE DATA (AUTO-PREENCHIMENTO) ---
+        def aplicar_mascara_data(event, widget):
+            # Teclas de controle que devem ser ignoradas para não prender o utilizador
+            teclas_ignoradas = ['BackSpace', 'Delete', 'Left', 'Right', 'Up', 'Down', 'Tab']
+            if event.keysym in teclas_ignoradas:
+                return
+
+            texto = widget.get()
+
+            # 1. Filtra apenas os números
+            numeros = "".join(filter(str.isdigit, texto))
+
+            # 2. Limita a quantidade máxima para 8 números (DDMMAAAA)
+            numeros = numeros[:8]
+
+            # 3. Reconstrói o texto inserindo as barras automaticamente
+            resultado = ""
+            for i, digito in enumerate(numeros):
+                if i in [2, 4]:  # Adiciona a barra na 3ª e na 5ª posição
+                    resultado += "/"
+                resultado += digito
+
+            # 4. Só atualiza se houver mudança (para evitar loops)
+            if texto != resultado:
+                widget.delete(0, tk.END)
+                widget.insert(0, resultado)
 
         # Box de Datas
         f_datas = ctk.CTkFrame(frame_config, fg_color="transparent")
@@ -479,11 +565,15 @@ class PortalNacionalModulo:
         ctk.CTkLabel(f_datas, text="Início:", font=("Arial", 12)).grid(row=0, column=0, padx=(0, 5))
         self.ent_data_ini = ctk.CTkEntry(f_datas, width=120)
         self.ent_data_ini.grid(row=0, column=1, padx=5)
+        # O bind executa a máscara logo depois de o utilizador soltar o dedo da tecla
+        self.ent_data_ini.bind("<KeyRelease>", lambda e: aplicar_mascara_data(e, self.ent_data_ini))
         self.ent_data_ini.insert(0, dt_ini)
 
         ctk.CTkLabel(f_datas, text="Fim:", font=("Arial", 12)).grid(row=0, column=2, padx=(15, 5))
         self.ent_data_fim = ctk.CTkEntry(f_datas, width=120)
         self.ent_data_fim.grid(row=0, column=3, padx=5)
+        # O bind executa a máscara na data Final também
+        self.ent_data_fim.bind("<KeyRelease>", lambda e: aplicar_mascara_data(e, self.ent_data_fim))
         self.ent_data_fim.insert(0, dt_fim)
 
         # Box de Caminho (Pasta)
