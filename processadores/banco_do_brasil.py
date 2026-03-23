@@ -116,35 +116,26 @@ class BBProcessorV2(BaseProcessor):
         super().__init__(pasta_pdf, pasta_excel)
         self.nome_modelo = "BB_V2"
 
-    def _extrair_tabelas(self, caminho_pdf):
-        """Método interno para extrair as tabelas do PDF"""
-        dados_tabela = []
-        with pdfplumber.open(caminho_pdf) as pdf:
-            for page in pdf.pages:
-                tabela = page.extract_table({
-                    "vertical_strategy": "text",
-                    "horizontal_strategy": "text"
-                })
-                if tabela:
-                    for linha in tabela:
-                        if linha and any(linha):
-                            dados_tabela.append(linha)
-        return dados_tabela
-
     def _processar_transacao(self, buffer):
         """Processa o buffer de texto do BB V2"""
         if not buffer: return None
         texto_completo = buffer['texto']
         val_data = buffer['data']
 
-        # Busca valores com "C" ou "D" no final
-        padrao_valor = r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*([DC])'
+        # Busca valores com "C" ou "D" no final (suporta vírgula ou ponto nos centavos)
+        padrao_valor = r'(\d{1,3}(?:\.\d{3})*[.,]\d{2})\s*([DC])'
         matches = list(re.finditer(padrao_valor, texto_completo))
         if not matches: return None
 
+        # Pega SEMPRE o primeiro valor (que é o valor do movimento). O saldo, se existir, vem depois.
         match_transacao = matches[0]
         val_str = match_transacao.group(1)
         tipo_letra = match_transacao.group(2)
+
+        # Proteção: Alguns extratos do BB podem trazer "2.500.00" por erro de formatação do banco.
+        # Se for ponto nos centavos, forçamos para vírgula antes de limpar.
+        if len(val_str) >= 3 and val_str[-3] == '.':
+            val_str = val_str[:-3] + ',' + val_str[-2:]
 
         val_final = self.limpar_valor(val_str)
         if tipo_letra == 'D':
@@ -156,18 +147,27 @@ class BBProcessorV2(BaseProcessor):
 
         # Limpeza pesada do histórico
         desc = texto_completo
-        desc = re.sub(padrao_valor, '', desc)
-        desc = re.sub(r'^[\d\s]+', '', desc)  # Remove códigos iniciais
-        desc = re.sub(r'\d{2}/\d{2}\s+\d{2}:\d{2}', '', desc)  # Remove datas/horas perdidas
-        desc = re.sub(r'\d{2}/\d{2}', '', desc)
-        desc = re.sub(r'\b\d{5,}\b', '', desc)  # Remove números grandes de docs
-        desc = re.sub(r'\b\d+(?:\.\d+)+\b', '', desc)  # Remove números formatados aleatórios
+        desc = re.sub(padrao_valor, '', desc)  # Remove todos os valores e saldos
+
+        # Removemos códigos iniciais (Ex: "0000 14397 821 Pix...")
+        desc = re.sub(r'^[\d\s]+', '', desc)
+
+        # Removemos "lixo" de datas perdidas, horas e números de documento
+        desc = re.sub(r'\d{2}/\d{2}\s+\d{2}:\d{2}', '', desc)
+        desc = re.sub(r'\d{2}/\d{2}/\d{4}', '', desc)
+        desc = re.sub(r'\b\d{2}/\d{2}\b', '', desc)
+        desc = re.sub(r'\b\d{5,}\b', '', desc)
+        desc = re.sub(r'\b\d+(?:\.\d+)+\b', '', desc)
 
         desc = desc.replace(" - ", " ").replace(" . ", " ")
         desc = re.sub(r'\s+', ' ', desc).strip()
         if desc.endswith("-"): desc = desc[:-1].strip()
 
-        if "SALDO" in desc.upper() and "ANTERIOR" in desc.upper(): return None
+        # Evita capturar linhas exclusivas de saldo final
+        desc_upper = desc.upper()
+        if "SALDO" in desc_upper and "ANTERIOR" in desc_upper: return None
+        if desc_upper == "SALDO" or desc_upper == "S A L D O": return None
+
         if not desc: desc = "HISTORICO NAO IDENTIFICADO"
 
         return {
@@ -178,37 +178,53 @@ class BBProcessorV2(BaseProcessor):
         }
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo BB V2 (Tabelado): {arquivo}")
+        log_func(f"Lendo BB V2 (Texto Contínuo): {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
 
         try:
-            dados_tabela = self._extrair_tabelas(caminho_pdf)
+            import pdfplumber
+            texto_completo = ""
 
-            if not dados_tabela:
-                log_func(f"Aviso: Tabela não detectada em {arquivo}.", "erro")
+            # Substituímos a leitura de tabela pela leitura de texto bruto página a página
+            with pdfplumber.open(caminho_pdf) as pdf:
+                for page in pdf.pages:
+                    texto_pagina = page.extract_text()
+                    if texto_pagina:
+                        texto_completo += texto_pagina + "\n"
+
+            if not texto_completo.strip():
+                log_func(f"Aviso: Texto não detectado em {arquivo}.", "erro")
                 return None
 
+            linhas = texto_completo.split('\n')
             registros = []
             buffer_atual = None
 
-            for linha in dados_tabela:
-                cols = [str(c).replace('\n', ' ').strip() if c else "" for c in linha]
-                if not any(cols): continue
+            # Padrão: Para ser transação, a linha TEM que começar com uma Data (DD/MM/AAAA)
+            padrao_data = r'^(\d{2}/\d{2}/\d{4})\s+(.*)'
 
-                col_0 = cols[0]
+            for linha in linhas:
+                linha = linha.strip()
+                if not linha: continue
 
-                if re.match(r'\d{2}/\d{2}/\d{4}', col_0):
+                match_data = re.match(padrao_data, linha)
+
+                if match_data:
+                    # Encontrou o começo de uma transação! Se havia uma aberta, manda processar e salvar.
                     if buffer_atual:
                         res = self._processar_transacao(buffer_atual)
                         if res: registros.append(res)
 
-                    texto_inicial = " ".join(cols[1:])
-                    buffer_atual = {'data': col_0, 'texto': texto_inicial}
+                    # Inicia um novo pacote (buffer) para a nova transação
+                    data_transacao = match_data.group(1)
+                    texto_inicial = match_data.group(2)
+                    buffer_atual = {'data': data_transacao, 'texto': texto_inicial}
 
                 elif buffer_atual:
-                    texto_extra = " ".join(cols)
-                    buffer_atual['texto'] += " " + texto_extra
+                    # A linha não começou com data, portanto é um pedaço do histórico da transação anterior
+                    buffer_atual['texto'] += " " + linha
 
+            # Quando acabar o documento, não esquecer de processar o último pacote que ficou aberto
             if buffer_atual:
                 res = self._processar_transacao(buffer_atual)
                 if res: registros.append(res)

@@ -48,7 +48,7 @@ ctk.set_default_color_theme("blue")  # Tema de cores primárias
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v5.7")
+        self.root.title("Automação Abentroth v6.1")
         self.root.geometry("1100x830")
         self.root.resizable(True, True)
 
@@ -283,7 +283,7 @@ class SistemaUnificadoGUI:
             "Versão: 5.7\n"
             "Data da Versão: 28/02/2026\n\n"
             "Notas da Versão:\n"
-            "1. Atualização Portal Nacional.\n"
+            "1. Atualização Conversores Extratos.\n"
 
         )
 
