@@ -13,7 +13,7 @@ class AilosProcessorV1(BaseProcessor):
         self.nome_modelo = "AILOS_V1"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo AILOS V1 (Geometria de Tabelas): {arquivo}")
+        log_func(f"Lendo AILOS V1: {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
         dados_brutos = []
 
@@ -96,7 +96,7 @@ class AilosProcessorV2(BaseProcessor):
         self.nome_modelo = "AILOS_V2"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo AILOS V2 (Viacredi Especial - Máquina de Estados): {arquivo}")
+        log_func(f"Lendo AILOS_V2: {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
         registros = []
 

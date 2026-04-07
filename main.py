@@ -280,10 +280,11 @@ class SistemaUnificadoGUI:
 
         info_texto = (
             "Autor: Guilherme Abentroth\n"
-            "Versão: 6.4\n"
-            "Data da Versão: 30/03/2026\n\n"
+            "Versão: 6.5\n"
+            "Data da Versão: 07/04/2026\n\n"
             "Notas da Versão:\n"
             "1. Atualização Conversores Extratos.\n"
+            "2. Adicionado AILOS V.2, MERCADOPAGO, NUBANK. \n"
 
         )
 

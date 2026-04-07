@@ -10,7 +10,7 @@ class NubankProcessor(BaseProcessor):
         self.nome_modelo = "NUBANK"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo NUBANK (Regra do Dia c/ Blindagem Anti-Subtotais): {arquivo}")
+        log_func(f"Lendo NUBANK: {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
 
         try:

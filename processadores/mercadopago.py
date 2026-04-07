@@ -10,7 +10,7 @@ class MercadoPagoProcessor(BaseProcessor):
         self.nome_modelo = "MERCADOPAGO"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo MERCADO PAGO (Leitura Contínua Padrão Stone): {arquivo}")
+        log_func(f"Lendo MERCADO PAGO: {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
 
         try:
