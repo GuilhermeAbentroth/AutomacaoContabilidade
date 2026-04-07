@@ -14,12 +14,10 @@ class SicoobCelularProcessor(BaseProcessor):
         self.nome_modelo = "SICOOB_CELULAR"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo SICOOB (APP CELULAR): {arquivo}")
+        log_func(f"Lendo SICOOB (APP CELULAR - Máquina de Estados): {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
         registros = []
         ano = str(datetime.now().year)
-        buffer_h = []
-        stop_p = False
 
         try:
             with pdfplumber.open(caminho_pdf) as pdf:
@@ -31,70 +29,132 @@ class SicoobCelularProcessor(BaseProcessor):
                 except Exception:
                     pass
 
-                # 2. Leitura Geométrica e de Cores
+                stop_p = False
+                transacao_atual = None
+
+                # 2. Leitura com Máquina de Estados Lineares
                 for page in pdf.pages:
                     if stop_p: break
-                    words = page.extract_words(extra_attrs=['non_stroking_color'], x_tolerance=2, y_tolerance=2)
+                    words = page.extract_words(extra_attrs=['non_stroking_color'])
                     if not words: continue
 
+                    # Ordena rigidamente de cima para baixo, esquerda para a direita
+                    words.sort(key=lambda w: (w['top'], w['x0']))
                     linhas = []
-                    curr_l = [words[0]]
-                    for i in range(1, len(words)):
-                        if abs(words[i]['top'] - curr_l[-1]['top']) < 3:
-                            curr_l.append(words[i])
-                        else:
-                            linhas.append(curr_l)
-                            curr_l = [words[i]]
-                    if curr_l: linhas.append(curr_l)
+                    linha_atual = []
+                    y_ref = None
 
-                    # 3. Processamento das Linhas
-                    for line in linhas:
-                        txt_l = " ".join([w['text'] for w in line])
-                        if "RESUMO" in txt_l.upper():
+                    # Reconstrói as linhas perfeitamente
+                    for w in words:
+                        if y_ref is None:
+                            linha_atual.append(w)
+                            y_ref = w['top']
+                        elif abs(w['top'] - y_ref) <= 4:
+                            linha_atual.append(w)
+                        else:
+                            linha_atual.sort(key=lambda x: x['x0'])
+                            linhas.append(" ".join([x['text'] for x in linha_atual]))
+                            linha_atual = [w]
+                            y_ref = w['top']
+
+                    if linha_atual:
+                        linha_atual.sort(key=lambda x: x['x0'])
+                        linhas.append(" ".join([x['text'] for x in linha_atual]))
+
+                    # Processamento Linha a Linha (Onde a Mágica Acontece)
+                    for txt_l in linhas:
+                        txt_l = txt_l.strip()
+                        if not txt_l: continue
+
+                        txt_upper = txt_l.upper()
+
+                        # Trava de Segurança
+                        if "RESUMO" in txt_upper:
                             stop_p = True
                             break
 
-                        m_d = re.search(r"(\d{2}/\d{2})", txt_l)
-                        m_v = re.search(r"(\d{1,3}(?:\.\d{3})*,\d{2})", txt_l)
+                        # Pula todo o lixo do Sicoob Celular
+                        skip_phrases = [
+                            "SICOOB", "SISTEMA DE COOPERATIVAS", "SISBR",
+                            "DATA HISTÓRICO VALOR", "SALDO ANTERIOR",
+                            "SALDO BLOQ", "SALDO DO DIA", "SALDOS", "OUVIDORIA"
+                        ]
+                        if any(x in txt_upper for x in skip_phrases) or txt_upper == "SALDO":
+                            continue
 
-                        if m_v and m_d:
+                        # A. Encontrou uma Data? -> Inicia Nova Transação!
+                        m_d = re.match(r'^(\d{2}/\d{2})(?:/\d{2,4})?', txt_l)
+                        if m_d:
+                            # Salva a transação antiga (se existir) antes de abrir a nova
+                            if transacao_atual and transacao_atual["VALOR"] is not None:
+                                hist_limpo = self.remover_acentos(transacao_atual["HISTORICO"]).upper()
+                                hist_limpo = re.sub(r'\s+', ' ', hist_limpo).strip(" -|.")
+                                transacao_atual["HISTORICO"] = hist_limpo
+                                registros.append(transacao_atual)
+
                             data_atu = m_d.group(1)
-                            v_s = m_v.group(1)
+                            transacao_atual = {
+                                "DATA": f"{data_atu}/{ano}",
+                                "HISTORICO": "",
+                                "VALOR": None,
+                                "TIPO": None
+                            }
+                            # Retira a data da string para não sujar o histórico
+                            txt_l = txt_l.replace(m_d.group(0), "", 1).strip()
 
-                            # Extração da cor para saber se é Débito ou Crédito
-                            cor = next((w.get('non_stroking_color') for w in line if v_s in w['text']), None)
-                            r, b = (cor[0], cor[2]) if isinstance(cor, (list, tuple)) and len(cor) >= 3 else (0, 0)
+                        # B. Procura pelo Valor da Transação na Linha
+                        if transacao_atual:
+                            matches_v = list(re.finditer(r'(\d{1,3}(?:\.\d{3})*,\d{2})\s*([DCdc])?', txt_l))
 
-                            tipo = "DEBITO" if (r > 0.5 and b < 0.5) or re.search(v_s + r"\s*D", txt_l) else "CREDITO"
+                            # Se encontrar valor e a transação atual ainda não tiver um
+                            if matches_v and transacao_atual["VALOR"] is None:
+                                match_v = matches_v[-1]  # Pega o último valor da linha
+                                v_s = match_v.group(1)
+                                sufixo = match_v.group(2)
 
-                            h_l = re.sub(r"\s+[CD]$", "", txt_l.replace(data_atu, "").replace(v_s, "").strip())
-                            hist_f = " ".join(buffer_h + [h_l]).strip()
+                                tipo = "CREDITO"
+                                if sufixo and sufixo.upper() == 'D':
+                                    tipo = "DEBITO"
+                                elif sufixo and sufixo.upper() == 'C':
+                                    tipo = "CREDITO"
+                                else:
+                                    # Fallback Inteligente: Avalia a Cor (Débito é Vermelho no Sicoob App)
+                                    cor = next((w.get('non_stroking_color') for w in words if v_s in w['text']), None)
+                                    r, b = (cor[0], cor[2]) if isinstance(cor, (list, tuple)) and len(cor) >= 3 else (0,
+                                                                                                                      0)
+                                    if r > 0.5 and b < 0.5:
+                                        tipo = "DEBITO"
 
-                            if not any(x in hist_f.upper() for x in ["SALDO", "BLOQ"]):
                                 val_limpo = self.limpar_valor(v_s)
-                                registros.append({
-                                    "DATA": f"{data_atu}/{ano}",
-                                    "HISTORICO": self.remover_acentos(hist_f).upper(),
-                                    "VALOR": -abs(val_limpo) if tipo == "DEBITO" else abs(val_limpo),
-                                    "TIPO": tipo
-                                })
-                            buffer_h = []
-                        else:
-                            # Linhas sem valor vão para o buffer de histórico
-                            if m_d: data_atu = m_d.group(1)
-                            t_l = txt_l.replace(data_atu if m_d else "", "").strip()
-                            if len(t_l) > 2 and not any(x in t_l.upper() for x in ["EXTRATO", "CONTA"]):
-                                buffer_h.append(t_l)
+                                transacao_atual["VALOR"] = -abs(val_limpo) if tipo == "DEBITO" else abs(val_limpo)
+                                transacao_atual["TIPO"] = tipo
 
-            # 4. Finalização
-            if registros:
-                df = self.preparar_dataframe(registros)
-                if df is not None:
-                    nome_base = os.path.splitext(arquivo)[0] + "_CELULAR"
-                    return self.salvar_arquivo(df, nome_base)
-            else:
-                log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
-                return None
+                                # Remove o valor da string para não sujar o histórico
+                                txt_l = txt_l.replace(match_v.group(0), "", 1).strip()
+
+                        # C. O que sobrar na linha é adicionado ao Histórico da Transação
+                        if transacao_atual and txt_l:
+                            # Ignora se sobrar apenas um "D" ou "C" isolado, ou um valor solto de saldo
+                            if txt_l.upper() not in ["D", "C"] and not re.match(r'^\d{1,3}(?:\.\d{3})*,\d{2}[DCdc]?$',
+                                                                                txt_l.strip()):
+                                transacao_atual["HISTORICO"] += " " + txt_l
+
+                # 3. Garante que a última transação da página seja guardada
+                if transacao_atual and transacao_atual["VALOR"] is not None:
+                    hist_limpo = self.remover_acentos(transacao_atual["HISTORICO"]).upper()
+                    hist_limpo = re.sub(r'\s+', ' ', hist_limpo).strip(" -|.")
+                    transacao_atual["HISTORICO"] = hist_limpo
+                    registros.append(transacao_atual)
+
+                # 4. Finalização
+                if registros:
+                    df = self.preparar_dataframe(registros)
+                    if df is not None:
+                        nome_base = os.path.splitext(arquivo)[0] + "_CELULAR"
+                        return self.salvar_arquivo(df, nome_base)
+                else:
+                    log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
+                    return None
 
         except Exception as e:
             log_func(f"Erro ao processar Celular {arquivo}: {e}", "erro")

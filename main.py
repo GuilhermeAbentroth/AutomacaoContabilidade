@@ -48,7 +48,7 @@ ctk.set_default_color_theme("blue")  # Tema de cores primárias
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v6.1")
+        self.root.title("Automação Abentroth v6.3")
         self.root.geometry("1100x830")
         self.root.resizable(True, True)
 
@@ -280,8 +280,8 @@ class SistemaUnificadoGUI:
 
         info_texto = (
             "Autor: Guilherme Abentroth\n"
-            "Versão: 5.7\n"
-            "Data da Versão: 28/02/2026\n\n"
+            "Versão: 6.4\n"
+            "Data da Versão: 30/03/2026\n\n"
             "Notas da Versão:\n"
             "1. Atualização Conversores Extratos.\n"
 
@@ -486,14 +486,24 @@ class SistemaUnificadoGUI:
     def tela_escolha_pagbank(self):
         self.construir_tela_unico_modelo("PagBank", "PAGBANK.png", "#8BC34A", self.contabil.fluxo_pagbank)
 
+    def tela_escolha_mercadopago(self):
+        self.construir_tela_unico_modelo("Mercado Pago", "MERCADOPAGO.png", "#00B1EA", self.contabil.fluxo_mercadopago)
+
     def tela_escolha_sicredi(self):
         self.construir_tela_unico_modelo("Sicredi", "SICREDI.png", "#32BC43", self.contabil.fluxo_sicredi)
 
     def tela_escolha_ailos(self):
-        self.construir_tela_unico_modelo("Ailos", "AILOS.png", "#005A9C", self.contabil.fluxo_ailos)
+        configs = [
+            {"texto": "Ailos V1 (Padrão)", "img": "AILOS.png", "cmd": self.contabil.fluxo_ailos_v1},
+            {"texto": "Ailos V2 (Viacredi)", "img": "AILOS2.png", "cmd": self.contabil.fluxo_ailos_v2}
+        ]
+        self.criar_tela_multi_modelos("AILOS", "#005A9C", configs)
 
     def tela_escolha_ifood(self):
         self.construir_tela_unico_modelo("iFood", "IFOOD.png", "#EA1D2C", self.contabil.fluxo_ifood)
+
+    def tela_escolha_nubank(self):
+        self.construir_tela_unico_modelo("Nubank", "NUBANK.png", "#8A05BE", self.contabil.fluxo_nubank)
 
     def tela_escolha_cresol(self):
         self.construir_tela_unico_modelo("Cresol", "CRESOL.png", "#006B3F", self.contabil.fluxo_cresol)
@@ -631,6 +641,8 @@ class SistemaUnificadoGUI:
                       fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="PagBank", command=self.tela_escolha_pagbank, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#8BC34A", hover_color="#649131").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="Nubank", command=self.tela_escolha_nubank, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#8A05BE", hover_color="#6B0394").pack(side="left", padx=10)
 
         f_b3 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b3.pack(pady=10)
@@ -640,13 +652,18 @@ class SistemaUnificadoGUI:
                       fg_color="#006B3F", hover_color="#004529").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="C6 Bank", command=self.tela_escolha_c6, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#242424", hover_color="#141414").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Mercado Pago", command=self.tela_escolha_mercadopago, width=btn_w, height=btn_h,
+                      font=f_font,
+                      fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="Excel > OFX", command=lambda: self.contabil.gerar_ofx(self.log_msg), width=btn_w,
                       height=btn_h, font=f_font, fg_color="#7f8c8d", hover_color="#576162").pack(side="left", padx=10)
+
 
         f_b4 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b4.pack(pady=20)
         ctk.CTkButton(f_b4, text="Voltar Menu", command=self.mostrar_menu_inicial, fg_color="gray",
                       hover_color="darkgray", width=200, height=40).pack(side="left", padx=10)
+
 
     # -------------------------------------------------------------------------
     # TELA FISCAL

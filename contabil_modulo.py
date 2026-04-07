@@ -380,6 +380,59 @@ class ContabilModulo:
         finalizar_func(excels)
         log_func(f"FIM CRESOL - {time.time() - start:.2f}s", "info")
 
+    def fluxo_mercadopago(self, log_func, finalizar_func):
+        # AQUI: Ajustado para o nome mercadopago.py
+        from processadores.mercadopago import MercadoPagoProcessor
+        import time
+
+        start = time.time()
+        processador = MercadoPagoProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Rastreia arquivos com "mercadopago" ou "mercado pago" no nome
+        arquivos = self.filtrar_arquivos(['mercadopago', 'mercado pago', 'mercado'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como MERCADO PAGO na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Mercado Pago: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM MERCADO PAGO - {time.time() - start:.2f}s", "info")
+
+    def fluxo_nubank(self, log_func, finalizar_func):
+        from processadores.nubank import NubankProcessor
+        import time
+
+        start = time.time()
+        processador = NubankProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Rastreia arquivos com "nubank" ou "nu" no nome (ajuste conforme necessário)
+        arquivos = self.filtrar_arquivos(['nubank'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como NUBANK na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Nubank: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM NUBANK - {time.time() - start:.2f}s", "info")
+
     def fluxo_c6(self, log_msg, bridge_callback):
         import os
         import threading
@@ -419,18 +472,17 @@ class ContabilModulo:
 
         threading.Thread(target=processar, daemon=True).start()
 
-    def fluxo_ailos(self, log_func, finalizar_func):
-        from processadores.ailos import AilosProcessor
+    def fluxo_ailos_v1(self, log_func, finalizar_func):
+        from processadores.ailos import AilosProcessorV1
         import time
 
         start = time.time()
-        processador = AilosProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+        processador = AilosProcessorV1(self.PASTA_PDF, self.PASTA_EXCEL)
 
-        # Correção: Usando a sua lista de palavras-chave original
+        # Usando a sua lista de palavras-chave original
         arquivos = self.filtrar_arquivos(self.KEYWORDS_AILOS)
         excels = []
 
-        # Trava de segurança para avisar se não achar nada
         if not arquivos:
             log_func("Aviso: Nenhum arquivo reconhecido como AILOS na pasta de PDFs.", "erro")
             log_func(f"Palavras-chave procuradas: {self.KEYWORDS_AILOS}", "info")
@@ -442,10 +494,40 @@ class ContabilModulo:
                     excels.append(resultado)
                     log_func(f"Sucesso: {resultado}", "sucesso")
             except Exception as e:
-                log_func(f"Erro no processador Ailos: {e}", "erro")
+                log_func(f"Erro no processador Ailos V1: {e}", "erro")
 
         finalizar_func(excels)
-        log_func(f"FIM AILOS - {time.time() - start:.2f}s", "info")
+        log_func(f"FIM AILOS V1 - {time.time() - start:.2f}s", "info")
+
+    # -------------------------------------------------------------------------
+    # FLUXO AILOS V2 (Viacredi Especial - Máquina de Estados)
+    # -------------------------------------------------------------------------
+    def fluxo_ailos_v2(self, log_func, finalizar_func):
+        from processadores.ailos import AilosProcessorV2
+        import time
+
+        start = time.time()
+        processador = AilosProcessorV2(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Usando a sua lista de palavras-chave original
+        arquivos = self.filtrar_arquivos(self.KEYWORDS_AILOS)
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como AILOS na pasta de PDFs.", "erro")
+            log_func(f"Palavras-chave procuradas: {self.KEYWORDS_AILOS}", "info")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Ailos V2: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM AILOS V2 - {time.time() - start:.2f}s", "info")
 
     def gerar_ofx(self, log_func, lista_especifica=None):
         start_ofx = time.time();
