@@ -67,8 +67,11 @@ class MercadoPagoProcessor(BaseProcessor):
                 return None
 
             registros = []
-            # Regex preparada para apanhar "R$ 10,00" ou "- R$ 10,00"
-            regex_valor = re.compile(r'([-\u2010-\u2015\u2212]?\s*R\$\s*[\d\.,]+)')
+
+            # =========================================================================
+            # CORREÇÃO APLICADA AQUI: Regex agora captura "R$ 10,00", "- R$ 10,00" ou "R$ -10,00"
+            # =========================================================================
+            regex_valor = re.compile(r'([-\u2010-\u2015\u2212]?\s*R\$\s*[-\u2010-\u2015\u2212]?\s*[\d\.,]+)')
 
             # 3. Processamento e Limpeza (A Mágica do Corte Mestre)
             for item in transacoes_puras:

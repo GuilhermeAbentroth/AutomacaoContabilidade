@@ -174,6 +174,46 @@ class ContabilModulo:
         finalizar_func(excels)
         log_func(f"FIM STONE - {time.time() - start:.2f}s", "info")
 
+    def fluxo_itau(self, log_msg, bridge):
+        from processadores.itau import ItauProcessor
+        import time
+
+        start = time.time()
+        log_msg("Iniciando conversão do banco ITAÚ...")
+        processor = ItauProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Filtra apenas os arquivos do Itaú
+        arquivos = self.filtrar_arquivos(['itau'])
+        excels = [] # Esta é a 'lista' que a bridge tanto quer
+
+        if not arquivos:
+            log_msg("Aviso: Nenhum PDF do Itaú encontrado.", "erro")
+            # CORREÇÃO 1: Passar lista vazia
+            if callable(bridge):
+                bridge([])
+            return
+
+        for arquivo in arquivos:
+            try:
+                resultado = processor.processar(arquivo, log_msg)
+                if resultado:
+                    excels.append(resultado)
+            except Exception as e:
+                log_msg(f"Erro no processador Itaú: {e}", "erro")
+
+        if excels:
+            log_msg(f"Sucesso! {len(excels)} arquivo(s) processado(s).")
+            # CORREÇÃO 2: Aqui você já estava passando certo, mas vamos garantir
+            if callable(bridge):
+                bridge(excels)
+        else:
+            log_msg("Nenhum arquivo do Itaú foi convertido.", "erro")
+            # CORREÇÃO 3: Passar lista vazia se falhar
+            if callable(bridge):
+                bridge([])
+
+        log_msg(f"FIM ITAÚ - {time.time() - start:.2f}s", "info")
+
     def fluxo_pagbank(self, log_func, finalizar_func):
         from processadores.pagbank import PagbankProcessor
         import time
@@ -406,6 +446,84 @@ class ContabilModulo:
 
         finalizar_func(excels)
         log_func(f"FIM MERCADO PAGO - {time.time() - start:.2f}s", "info")
+
+    def fluxo_magalupay(self, log_func, finalizar_func):
+        from processadores.magalupay import MagaluPayProcessor
+        import time
+
+        start = time.time()
+        processador = MagaluPayProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Procura ficheiros com 'magalu' ou 'magalupay' no nome
+        arquivos = self.filtrar_arquivos(['magalupay', 'magalu'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum ficheiro reconhecido como MagaluPay na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador MagaluPay: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM MAGALUPAY - {time.time() - start:.2f}s", "info")
+
+    def fluxo_xp(self, log_func, finalizar_func):
+        from processadores.xp import XPProcessor
+        import time
+
+        start = time.time()
+        processador = XPProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Rastreia arquivos com "xp" no nome
+        arquivos = self.filtrar_arquivos(['xp'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como XP na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador XP: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM XP - {time.time() - start:.2f}s", "info")
+
+    def fluxo_inter(self, log_func, finalizar_func):
+        from processadores.inter import InterProcessor
+        import time
+
+        start = time.time()
+        processador = InterProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Rastreia PDFs que tenham "inter" no nome
+        arquivos = self.filtrar_arquivos(['inter'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como INTER na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Inter: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM INTER - {time.time() - start:.2f}s", "info")
 
     def fluxo_nubank(self, log_func, finalizar_func):
         from processadores.nubank import NubankProcessor

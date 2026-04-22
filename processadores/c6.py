@@ -1,8 +1,6 @@
 import os
 import re
-import fitz
-import tabula
-import pandas as pd
+import fitz  # PyMuPDF nativo (Sem Java!)
 from datetime import datetime
 from base_processor import BaseProcessor
 
@@ -10,147 +8,138 @@ from base_processor import BaseProcessor
 class C6Processor(BaseProcessor):
     def __init__(self, pasta_pdf, pasta_excel):
         super().__init__(pasta_pdf, pasta_excel)
-        self.nome_banco = "C6"
+        self.nome_modelo = "C6"
 
     def processar(self, arquivo, log_func):
-        log_func(f"Lendo C6 Bank: {arquivo}")
+        log_func(f"Lendo C6 Bank (Modo Nativo sem Java): {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
 
         try:
-            # 1. Extrair Ano Base do cabeçalho
             doc = fitz.open(caminho_pdf)
-            texto_completo = ""
-            for page in doc:
-                texto_completo += page.get_text("text") + "\n"
-            doc.close()
-
+            linhas = []
             ano_atual = str(datetime.now().year)
-            match_ano = re.search(r'\d{2}/\d{2}/(\d{4})', texto_completo)
-            if match_ano:
-                ano_atual = match_ano.group(1)
 
-            # 2. Extrair com Tabula (stream e guess ajustados para ler blocos de texto puros)
-            lista_tabelas = tabula.read_pdf(
-                caminho_pdf,
-                pages='all',
-                multiple_tables=True,
-                pandas_options={'header': None},
-                stream=True,
-                guess=False
-            )
+            # =========================================================
+            # 1. AGRUPAMENTO DE LINHAS E EXTRAÇÃO DO ANO BASE
+            # =========================================================
+            for page in doc:
+                # Procura o ano no texto livre da página
+                texto_pagina = page.get_text("text")
+                match_ano = re.search(r'\d{2}/\d{2}/(\d{4})', texto_pagina)
+                if match_ano:
+                    ano_atual = match_ano.group(1)
 
-            if not lista_tabelas:
-                log_func(f"Aviso: Nenhuma tabela detectada em {arquivo}", "erro")
+                words = page.get_text("words")
+                if not words: continue
+
+                # Ordena as palavras verticalmente e depois horizontalmente
+                words.sort(key=lambda w: (w[1], w[0]))
+
+                linha_atual = []
+                y_ref = None
+
+                # Reconstrói as linhas aglutinando palavras com a mesma altura (y)
+                for w in words:
+                    if y_ref is None:
+                        linha_atual.append(w)
+                        y_ref = w[1]
+                    elif abs(w[1] - y_ref) <= 4:  # Tolerância de alinhamento vertical
+                        linha_atual.append(w)
+                    else:
+                        linha_atual.sort(key=lambda x: x[0])
+                        linhas.append(" ".join([x[4] for x in linha_atual]))
+                        linha_atual = [w]
+                        y_ref = w[1]
+
+                if linha_atual:
+                    linha_atual.sort(key=lambda x: x[0])
+                    linhas.append(" ".join([x[4] for x in linha_atual]))
+
+            if not linhas:
+                log_func(f"Aviso: Nenhuma linha útil encontrada em {arquivo}", "erro")
                 return None
 
             registros = []
 
-            # Formatador blindado contra RS, R$ e pontuações americanas
-            def formatar_valor_c6(v_str):
-                v_str = str(v_str).upper().replace("R$", "").replace("RS", "").replace(" ", "").strip()
-                sinal = -1 if "-" in v_str else 1
-                v_str = re.sub(r'[^\d\,\.]', '', v_str)
+            # =========================================================
+            # 2. MÁQUINA DE ESTADOS CONTÍNUA DO C6
+            # =========================================================
+            for linha in linhas:
+                linha_str = linha.strip()
+                if not linha_str: continue
 
-                if not v_str: return 0.0
+                linha_up = linha_str.upper()
 
-                if len(v_str) > 3 and v_str[-3] in [',', '.']:
-                    inteiros = v_str[:-3].replace('.', '').replace(',', '')
-                    decimais = v_str[-2:]
-                    return float(f"{inteiros}.{decimais}") * sinal
+                # Filtra cabeçalhos da tabela e lixo comum
+                if "SALDO" in linha_up and "DIA" in linha_up: continue
+                if "DATA" in linha_up and "HISTÓRICO" in linha_up: continue
+                if "VALOR" in linha_up and "R$" in linha_up: continue
+
+                # PASSO 1: Capturar a DATA (Sempre no início da linha ex: 15/04)
+                match_data = re.search(r'^([0-3]\d/[0-1]\d)', linha_str)
+                if not match_data:
+                    continue  # Não começou com data? Ignora a linha
+
+                data_dia_mes = match_data.group(1)
+                data_formatada = f"{data_dia_mes}/{ano_atual}"
+
+                # Remove a data capturada da string para limparmos o histórico
+                linha_str = linha_str[match_data.end():].strip()
+
+                # Se houver uma data repetida colada (Data contábil), remove também
+                if re.search(r'^([0-3]\d/[0-1]\d)', linha_str):
+                    linha_str = re.sub(r'^([0-3]\d/[0-1]\d)', '', linha_str).strip()
+
+                # PASSO 2: Capturar o VALOR (Sempre no final da linha)
+                # Procura por R$, RS ou apenas o número (positivo ou negativo) no fim da frase
+                match_valor = re.search(r'(-?(?:R\$|RS)?\s*\d{1,3}(?:\.\d{3})*,\d{2})\s*$', linha_str, re.IGNORECASE)
+
+                if not match_valor:
+                    # Falha de segurança: Tenta formato com ponto final nos centavos (se o PDF vier bugado)
+                    match_valor = re.search(r'(-?(?:R\$|RS)?\s*\d{1,3}(?:,\d{3})*\.\d{2})\s*$', linha_str,
+                                            re.IGNORECASE)
+
+                if match_valor:
+                    valor_str_raw = match_valor.group(1)
+                    # Remove o valor do fim da string, o que sobrar é o histórico puro!
+                    linha_str = linha_str[:match_valor.start()].strip()
                 else:
-                    v_str = v_str.replace('.', '').replace(',', '')
-                    return float(v_str) * sinal
+                    continue  # Linha sem valor financeiro no fim não é transação
 
-            # 3. Lógica Resiliente de Achatamento de Linhas
-            for df in lista_tabelas:
-                for index, row in df.iterrows():
-                    try:
-                        # Achata a linha, removendo colunas vazias
-                        cols = [str(x).strip() for x in row.values if
-                                pd.notna(x) and str(x).strip() not in ("", "nan", "None")]
-                        if len(cols) < 3:
-                            continue
+                # Limpeza cirúrgica do valor
+                val_clean_str = valor_str_raw.upper().replace("R$", "").replace("RS", "").strip()
+                eh_negativo = "-" in val_clean_str
+                val_clean_str = val_clean_str.replace("-", "").strip()
 
-                        # Procura uma data DD/MM na coluna 0.
-                        match_data = re.search(r'^([0-3]\d/[0-1]\d)', cols[0])
+                # Converte usando o seu método nativo do BaseProcessor
+                val_num = self.limpar_valor(val_clean_str)
+                if val_num == 0:
+                    continue
 
-                        # Se não for uma data, ou se for um lixo de OCR (ex: 60/60), tenta a próxima coluna
-                        if not match_data and len(cols) > 1:
-                            match_data = re.search(r'^([0-3]\d/[0-1]\d)', cols[1])
-                            if match_data:
-                                cols.pop(0)  # Descarta o lixo
+                # PASSO 3: Guardar Histórico
+                historico_final = linha_str.strip()
+                if not historico_final:
+                    historico_final = "LANCAMENTO C6"
 
-                        if not match_data:
-                            continue  # Não tem data, descarta (ex: "Saldo do dia")
+                registros.append({
+                    "DATA": data_formatada,
+                    "HISTORICO": self.remover_acentos(historico_final).upper(),
+                    "VALOR": -abs(val_num) if eh_negativo else abs(val_num),
+                    "TIPO": "DEBITO" if eh_negativo else "CREDITO"
+                })
 
-                        data_formatada = f"{match_data.group(1)}/{ano_atual}"
-
-                        # Limpa a data do texto onde ela estava
-                        cols[0] = cols[0].replace(match_data.group(1), '').strip()
-
-                        # Se existir a segunda data (Data Contábil) aglutinada, limpa-a também
-                        if cols and re.search(r'^([0-3]\d/[0-1]\d)', cols[0]):
-                            cols[0] = re.sub(r'^([0-3]\d/[0-1]\d)', '', cols[0]).strip()
-
-                        # Deita fora blocos que ficaram vazios após remover as datas
-                        while cols and not cols[0]:
-                            cols.pop(0)
-
-                        if not cols:
-                            continue
-
-                        # Procura o Valor Monetário no fim do texto da última coluna
-                        valor_bruto = ""
-                        # Regex caça: sinal negativo, RS ou R$, espaços, dígitos e centavos obrigatórios
-                        match_valor = re.search(r'(-?(?:R\$|RS)?\s*\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*$', cols[-1],
-                                                re.IGNORECASE)
-
-                        if match_valor:
-                            valor_bruto = match_valor.group(1)
-                            # Remove o valor da coluna para não o repetir na descrição
-                            cols[-1] = cols[-1].replace(valor_bruto, '').strip()
-                        else:
-                            valor_bruto = cols[-1]
-                            cols.pop()
-
-                        # Limpa eventuais blocos vazios no final
-                        while cols and not cols[-1]:
-                            cols.pop()
-
-                        valor_final = formatar_valor_c6(valor_bruto)
-
-                        # Evita linhas onde o valor formatado falhou
-                        if valor_final == 0:
-                            continue
-
-                        # O que sobrou nas colunas do meio é o Histórico
-                        historico_bruto = " - ".join([c for c in cols if c])
-                        if not historico_bruto:
-                            historico_bruto = "Lançamento C6"
-
-                        tipo_mov = "CREDITO" if valor_final >= 0 else "DEBITO"
-
-                        registros.append({
-                            "DATA": data_formatada,
-                            "HISTORICO": self.remover_acentos(historico_bruto).upper(),
-                            "VALOR": valor_final,
-                            "TIPO": tipo_mov
-                        })
-
-                    except Exception:
-                        continue
-
-            # 4. Finaliza e Salva com o Maestro Base
+            # =========================================================
+            # 3. CONSTRUÇÃO DO EXCEL
+            # =========================================================
             if registros:
-                df_final = self.preparar_dataframe(registros)
-                if df_final is not None:
+                df = self.preparar_dataframe(registros)
+                if df is not None:
                     nome_base = os.path.splitext(arquivo)[0]
-                    ficheiro_salvo = self.salvar_arquivo(df_final, nome_base)
-                    return ficheiro_salvo
+                    return self.salvar_arquivo(df, nome_base)
             else:
-                log_func(f"Aviso: Nenhuma transação capturada em {arquivo}", "erro")
+                log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
                 return None
 
         except Exception as e:
-            log_func(f"Erro ao processar {arquivo}: {e}", "erro")
+            log_func(f"Erro ao processar C6 {arquivo}: {e}", "erro")
             return None

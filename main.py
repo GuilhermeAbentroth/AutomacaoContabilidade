@@ -8,6 +8,8 @@ import base64
 import hmac
 import hashlib
 from datetime import datetime
+from fiscal_api_modulo import FiscalAPIModulo
+
 
 # =========================================================================
 # IMPORTAÇÃO DA CHAVE DE SEGURANÇA EXTERNA
@@ -48,9 +50,10 @@ ctk.set_default_color_theme("blue")  # Tema de cores primárias
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v6.3")
+        self.root.title("Automação Abentroth v6.8")
         self.root.geometry("1100x830")
         self.root.resizable(True, True)
+
 
         if getattr(sys, 'frozen', False):
             self.pasta_exe = os.path.dirname(sys.executable)
@@ -73,6 +76,7 @@ class SistemaUnificadoGUI:
         self.fiscal = FiscalModulo(self)
         self.nfse = PortalNacionalModulo(self)
         self.betha = EmissorBethaModulo(self)
+        self.fiscal_api = FiscalAPIModulo(self)
 
         self.mostrar_menu_inicial()
 
@@ -280,11 +284,12 @@ class SistemaUnificadoGUI:
 
         info_texto = (
             "Autor: Guilherme Abentroth\n"
-            "Versão: 6.5\n"
-            "Data da Versão: 07/04/2026\n\n"
+            "Versão: 6.8\n"
+            "Data da Versão: 21/04/2026\n\n"
             "Notas da Versão:\n"
             "1. Atualização Conversores Extratos.\n"
-            "2. Adicionado AILOS V.2, MERCADOPAGO, NUBANK. \n"
+            "2. Ajuste de ordem dos conversores. \n"
+            "3. Criacao de 2 novos conversores. \n"
 
         )
 
@@ -429,6 +434,14 @@ class SistemaUnificadoGUI:
                       width=220, height=80, font=("Arial", 20, "bold"), fg_color="#8e44ad", hover_color="#732d91").grid(
             row=0, column=3, padx=20, pady=20)
 
+        #BOTAO OCULTO
+        #ctk.CTkButton(f_b, text="EMISSOR NFSE LOTE (NOVA API)",
+        #              command=self.fiscal_api.tela_emissor_betha_api,
+        #              width=400, height=60, font=("Arial", 16, "bold"),
+        #              fg_color="#27ae60", hover_color="#2ecc71").grid(
+        #    row=1, column=0, columnspan=4, pady=(10, 20))
+
+
         # Rodapé
         ctk.CTkLabel(self.container, text="Powered by: Guilherme Abentroth", font=("Arial", 12)).pack(side=tk.BOTTOM,
                                                                                                       anchor="w",
@@ -500,11 +513,18 @@ class SistemaUnificadoGUI:
         ]
         self.criar_tela_multi_modelos("AILOS", "#005A9C", configs)
 
+    def tela_escolha_itau(self):
+        # Substitua "ITAU.png" pelo nome do ícone que você quiser usar, ou None se não tiver.
+        self.construir_tela_unico_modelo("Itaú", "ITAU.png", "#EC7000", self.contabil.fluxo_itau)
+
     def tela_escolha_ifood(self):
         self.construir_tela_unico_modelo("iFood", "IFOOD.png", "#EA1D2C", self.contabil.fluxo_ifood)
 
     def tela_escolha_nubank(self):
         self.construir_tela_unico_modelo("Nubank", "NUBANK.png", "#8A05BE", self.contabil.fluxo_nubank)
+
+    def tela_escolha_magalupay(self):
+        self.construir_tela_unico_modelo("MagaluPay", "MAGALUPAY.png", "#0086FF", self.contabil.fluxo_magalupay)
 
     def tela_escolha_cresol(self):
         self.construir_tela_unico_modelo("Cresol", "CRESOL.png", "#006B3F", self.contabil.fluxo_cresol)
@@ -588,6 +608,13 @@ class SistemaUnificadoGUI:
         ]
         self.criar_tela_multi_modelos("BANCO DO BRASIL", "#fdb913", configs)
 
+    def tela_escolha_xp(self):
+        # A cor principal da XP é o Preto (#000000) e Dourado. Vamos usar preto para o botão.
+        self.construir_tela_unico_modelo("XP Investimentos", "XP.png", "#000000", self.contabil.fluxo_xp)
+
+    def tela_escolha_inter(self):
+        self.construir_tela_unico_modelo("Banco Inter", "INTER.png", "#FF7A00", self.contabil.fluxo_inter)
+
     def tela_escolha_sicoob(self):
         configs = [
             {"texto": "Sicoob Celular (App)", "img": "sicoob_celular.png", "cmd": self.contabil.fluxo_sicoob_celular},
@@ -623,47 +650,63 @@ class SistemaUnificadoGUI:
 
         f_b1 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b1.pack(pady=10)
+        ctk.CTkButton(f_b1, text="Ailos", command=self.tela_escolha_ailos, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#005A9C", hover_color="#003d6b").pack(side="left", padx=10)
         ctk.CTkButton(f_b1, text="Banco do Brasil", command=self.tela_escolha_bb, width=btn_w, height=btn_h,
                       font=f_font, fg_color="#fdb913", hover_color="#c99106").pack(side="left", padx=10)
+        ctk.CTkButton(f_b1, text="Banco Inter", command=self.tela_escolha_inter, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#FF7A00", hover_color="#CC6200").pack(side="left", padx=10)
+        ctk.CTkButton(f_b1, text="C6 Bank", command=self.tela_escolha_c6, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#242424", hover_color="#141414").pack(side="left", padx=10)
         ctk.CTkButton(f_b1, text="Caixa", command=self.tela_escolha_caixa, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#005CA9", hover_color="#00407a").pack(side="left", padx=10)
-        ctk.CTkButton(f_b1, text="Santander", command=self.tela_escolha_santander, width=btn_w, height=btn_h,
-                      font=f_font, fg_color="#ec0000", hover_color="#b30000").pack(side="left", padx=10)
-        ctk.CTkButton(f_b1, text="Sicredi", command=self.tela_escolha_sicredi, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#32BC43", hover_color="#248a31").pack(side="left", padx=10)
+
+
+
 
         f_b2 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b2.pack(pady=10)
-        ctk.CTkButton(f_b2, text="Sicoob", command=self.tela_escolha_sicoob, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#00ae9d", hover_color="#008073").pack(side="left", padx=10)
-        ctk.CTkButton(f_b2, text="Ailos", command=self.tela_escolha_ailos, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#005A9C", hover_color="#003d6b").pack(side="left", padx=10)
-        ctk.CTkButton(f_b2, text="Stone", command=self.tela_escolha_stone, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
-        ctk.CTkButton(f_b2, text="PagBank", command=self.tela_escolha_pagbank, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#8BC34A", hover_color="#649131").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="Cresol", command=self.tela_escolha_cresol, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#006B3F", hover_color="#004529").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="iFood", command=self.tela_escolha_ifood, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#EA1D2C", hover_color="#b3121f").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="Itaú", command=self.tela_escolha_itau, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#EC7000", hover_color="#D35400").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="MagaluPay", command=self.tela_escolha_magalupay, width=btn_w, height=btn_h,
+                      font=f_font,
+                      fg_color="#0086FF", hover_color="#006bcf").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="Mercado Pago", command=self.tela_escolha_mercadopago, width=btn_w, height=btn_h,
+                      font=f_font,
+                      fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="Nubank", command=self.tela_escolha_nubank, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#8A05BE", hover_color="#6B0394").pack(side="left", padx=10)
 
+
+
+
         f_b3 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b3.pack(pady=10)
-        ctk.CTkButton(f_b3, text="iFood", command=self.tela_escolha_ifood, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#EA1D2C", hover_color="#b3121f").pack(side="left", padx=10)
-        ctk.CTkButton(f_b3, text="Cresol", command=self.tela_escolha_cresol, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#006B3F", hover_color="#004529").pack(side="left", padx=10)
-        ctk.CTkButton(f_b3, text="C6 Bank", command=self.tela_escolha_c6, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#242424", hover_color="#141414").pack(side="left", padx=10)
-        ctk.CTkButton(f_b3, text="Mercado Pago", command=self.tela_escolha_mercadopago, width=btn_w, height=btn_h,
-                      font=f_font,
-                      fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
-        ctk.CTkButton(f_b3, text="Excel > OFX", command=lambda: self.contabil.gerar_ofx(self.log_msg), width=btn_w,
-                      height=btn_h, font=f_font, fg_color="#7f8c8d", hover_color="#576162").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="PagBank", command=self.tela_escolha_pagbank, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#8BC34A", hover_color="#649131").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Santander", command=self.tela_escolha_santander, width=btn_w, height=btn_h,
+                      font=f_font, fg_color="#ec0000", hover_color="#b30000").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Sicoob", command=self.tela_escolha_sicoob, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#00ae9d", hover_color="#008073").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Sicredi", command=self.tela_escolha_sicredi, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#32BC43", hover_color="#248a31").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Stone", command=self.tela_escolha_stone, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
 
 
         f_b4 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b4.pack(pady=20)
+        ctk.CTkButton(f_b4, text="XP", command=self.tela_escolha_xp, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#000000", hover_color="#333333").pack(side="left", padx=10)
+        ctk.CTkButton(f_b4, text="Excel > OFX", command=lambda: self.contabil.gerar_ofx(self.log_msg), width=btn_w,
+                      height=btn_h, font=f_font, fg_color="#7f8c8d", hover_color="#576162").pack(side="left", padx=10)
         ctk.CTkButton(f_b4, text="Voltar Menu", command=self.mostrar_menu_inicial, fg_color="gray",
                       hover_color="darkgray", width=200, height=40).pack(side="left", padx=10)
+
 
 
     # -------------------------------------------------------------------------

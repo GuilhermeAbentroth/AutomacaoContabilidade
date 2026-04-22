@@ -1,6 +1,6 @@
 import os
 import re
-import pdfplumber
+import fitz  # PyMuPDF
 from base_processor import BaseProcessor
 
 
@@ -10,101 +10,100 @@ class CresolProcessor(BaseProcessor):
         self.nome_modelo = "CRESOL"
 
     def processar(self, arquivo, log_func):
+        log_func(f"Lendo Cresol (Modo Nativo de Blocos Textuais): {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
 
         try:
-            texto_global = ""
+            doc = fitz.open(caminho_pdf)
+            linhas = []
 
-            with pdfplumber.open(caminho_pdf) as pdf:
-                for page in pdf.pages:
-                    words = page.extract_words(x_tolerance=3, y_tolerance=3)
-                    if not words: continue
+            for page in doc:
+                texto = page.get_text("text")
+                linhas.extend(texto.split('\n'))
 
-                    words.sort(key=lambda w: w['top'])
-                    linhas_da_pagina = []
-                    if words:
-                        linha_atual = [words[0]]
-                        for w in words[1:]:
-                            if abs(w['top'] - linha_atual[0]['top']) <= 5:
-                                linha_atual.append(w)
-                            else:
-                                linhas_da_pagina.append(linha_atual)
-                                linha_atual = [w]
-                        if linha_atual:
-                            linhas_da_pagina.append(linha_atual)
-
-                    for linha in linhas_da_pagina:
-                        linha.sort(key=lambda w: w['x0'])
-                        texto_linha = " ".join([w['text'] for w in linha]).strip()
-
-                        if not texto_linha: continue
-
-                        tl_upper = texto_linha.upper()
-                        if "SALDO DO DIA" in tl_upper or "SALDO ANTERIOR" in tl_upper: continue
-                        if "SALDO EM CONTA" in tl_upper or "SALDO DISPON" in tl_upper: continue
-                        if "CONSULTA POSI" in tl_upper: continue
-                        if "PERIODO DE" in tl_upper or "PÁGINA" in tl_upper or "PAGINA" in tl_upper: continue
-                        if "LIMITE DE CR" in tl_upper: continue
-                        if "LANÇAMENTOS" == tl_upper or "LANCAMENTOS" == tl_upper: continue
-                        if re.match(r'^\d{2} DE [A-Z]+ DE \d{4}', tl_upper): continue
-
-                        texto_global += " " + texto_linha
-
-            texto_global = re.sub(r'\s+', ' ', texto_global).strip()
-
-            chunks = re.split(r'(?=\b\d{2}/\d{2}/\d{4}\b)', texto_global)
+            if not linhas:
+                log_func(f"Aviso: Nenhuma linha útil encontrada em {arquivo}", "erro")
+                return None
 
             registros = []
-            for chunk in chunks:
-                chunk = chunk.strip()
-                if not re.match(r'^\d{2}/\d{2}/\d{4}', chunk): continue
+            transacao_atual = None
 
-                matches_valor = list(re.finditer(r'([+-]?\s*R\$\s*[\d\.,]+)', chunk))
-                if not matches_valor: continue
+            for linha in linhas:
+                linha_str = linha.strip()
+                if not linha_str: continue
+                linha_up = linha_str.upper()
 
-                transacao = matches_valor[-1]
-                val_str_raw = transacao.group(1).replace(" ", "")
+                # =========================================================
+                # 1. A GUILHOTINA REFORÇADA (Ignora saldos e lixo)
+                # =========================================================
+                # Filtro mais agressivo para qualquer variação de Saldo
+                if re.search(r"SALDO\s+(ANTERIOR|DO\s+DIA|EM\s+CONTA|DISPON|CONSOL|BLOQUEADO)", linha_up):
+                    continue
 
-                val_clean = self.limpar_valor(val_str_raw.replace("+", "").replace("-", "").replace("R$", ""))
-                if val_clean == 0: continue
+                if "CONSULTA POSI" in linha_up: continue
+                if "PERIODO DE" in linha_up or "PÁGINA" in linha_up or "PAGINA" in linha_up: continue
+                if "LIMITE DE CR" in linha_up: continue
+                if "LANÇAMENTOS" == linha_up or "LANCAMENTOS" == linha_up: continue
+                if "CRESOL" == linha_up: continue
+                if "AGÊNCIA" in linha_up or "AGENCIA " in linha_up: continue
+                if re.match(r'^\d{2} DE [A-Z]+ DE \d{4}', linha_up): continue
 
-                eh_negativo = "-" in val_str_raw
-                eh_positivo = "+" in val_str_raw
+                # =========================================================
+                # 2. IDENTIFICA O INÍCIO DE UMA TRANSAÇÃO
+                # =========================================================
+                match_data = re.match(r'^(\d{2}/\d{2}/\d{4})', linha_str)
 
-                hist = chunk[10:]
-                for m in matches_valor:
-                    hist = hist.replace(m.group(0), "")
+                if match_data:
+                    # Se havia uma transação pendente, finaliza antes de abrir a nova
+                    if transacao_atual:
+                        finalizada = self._finalizar_transacao(transacao_atual)
+                        if finalizada: registros.append(finalizada)
 
-                hist = re.sub(r'\b\d{10,}\b', '', hist)
-                hist = re.sub(r'^[-\s]+', '', hist)
-                hist = re.sub(r'\s+', ' ', hist).strip()
-                hist_upper = hist.upper()
+                    data_str = match_data.group(1)
+                    resto = linha_str[10:].strip()
 
-                if "BLOQUEIO" in hist_upper and "DESBLOQUEIO" not in hist_upper:
-                    eh_negativo = True
-                elif "DESBLOQUEIO" in hist_upper:
-                    eh_negativo = False
-                elif not eh_negativo and not eh_positivo:
-                    palavras_debito = ["DEBITO", "DÉBITO", "TARIFA", "CUSTAS", "PAGAMENTO", "SAQUE", "CHEQUE",
-                                       "ENCARGO", "CONSORCIO", "MENSALIDADE", "IMPOSTO", "IOF"]
-                    eh_negativo = any(p in hist_upper for p in palavras_debito)
+                    match_valor = re.search(r'([+-]?\s*(?:R\$|RS)?\s*\d{1,3}(?:\.\d{3})*,\d{2})$', resto, re.IGNORECASE)
+                    valor_str = ""
 
-                tipo = "DEBITO" if eh_negativo else "CREDITO"
-                valor_final = -abs(val_clean) if eh_negativo else abs(val_clean)
+                    if match_valor:
+                        valor_str = match_valor.group(1)
+                        resto = resto[:match_valor.start()].strip()
 
-                if not hist: hist = "HISTORICO NAO IDENTIFICADO"
+                    transacao_atual = {
+                        "data": data_str,
+                        "historico": resto,
+                        "valor_str": valor_str
+                    }
 
-                registros.append({
-                    "DATA": chunk[:10],
-                    "HISTORICO": self.remover_acentos(hist).upper(),
-                    "VALOR": valor_final,
-                    "TIPO": tipo
-                })
+                    if valor_str:
+                        finalizada = self._finalizar_transacao(transacao_atual)
+                        if finalizada: registros.append(finalizada)
+                        transacao_atual = None
+
+                else:
+                    # =========================================================
+                    # 3. CONTINUAÇÃO DE HISTÓRICO
+                    # =========================================================
+                    if transacao_atual:
+                        match_valor = re.search(r'([+-]?\s*(?:R\$|RS)?\s*\d{1,3}(?:\.\d{3})*,\d{2})$', linha_str,
+                                                re.IGNORECASE)
+
+                        if match_valor:
+                            transacao_atual["valor_str"] = match_valor.group(1)
+                            texto_extra = linha_str[:match_valor.start()].strip()
+                            if texto_extra: transacao_atual["historico"] += " " + texto_extra
+
+                            finalizada = self._finalizar_transacao(transacao_atual)
+                            if finalizada: registros.append(finalizada)
+                            transacao_atual = None
+                        else:
+                            transacao_atual["historico"] += " " + linha_str
 
             if registros:
                 df = self.preparar_dataframe(registros)
                 if df is not None:
-                    return self.salvar_arquivo(df, os.path.splitext(arquivo)[0])
+                    nome_base = os.path.splitext(arquivo)[0]
+                    return self.salvar_arquivo(df, nome_base)
 
             log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
             return None
@@ -112,3 +111,51 @@ class CresolProcessor(BaseProcessor):
         except Exception as e:
             log_func(f"Erro CRESOL {arquivo}: {e}", "erro")
             return None
+
+    def _finalizar_transacao(self, transacao):
+        """ Limpa a transação e aplica as regras financeiras """
+        if not transacao.get("valor_str"): return None
+
+        hist = transacao["historico"].upper()
+
+        # --- FILTRO DE SEGURANÇA EXTRA ---
+        # Se restou a palavra SALDO no histórico, ignoramos a transação inteira
+        if "SALDO" in hist:
+            return None
+
+        val_str_raw = transacao["valor_str"].replace(" ", "")
+        val_clean = self.limpar_valor(val_str_raw.replace("+", "").replace("-", "").replace("R$", "").replace("RS", ""))
+
+        if val_clean == 0: return None
+
+        eh_negativo = "-" in val_str_raw
+        eh_positivo = "+" in val_str_raw
+
+        # Remove os IDs gigantes
+        hist = re.sub(r'\b\d{10,}\b', '', hist).strip()
+
+        # Motor de reconhecimento de Débito/Crédito
+        if "BLOQUEIO" in hist and "DESBLOQUEIO" not in hist:
+            eh_negativo = True
+        elif "DESBLOQUEIO" in hist:
+            eh_negativo = False
+        elif not eh_negativo and not eh_positivo:
+            palavras_debito = ["DEBITO", "DÉBITO", "TARIFA", "CUSTAS", "PAGAMENTO", "SAQUE", "CHEQUE", "ENCARGO",
+                               "CONSORCIO", "MENSALIDADE", "IMPOSTO", "IOF", "TED"]
+            eh_negativo = any(p in hist for p in palavras_debito)
+
+        tipo = "DEBITO" if eh_negativo else "CREDITO"
+        valor_final = -abs(val_clean) if eh_negativo else abs(val_clean)
+
+        historico_final = self.remover_acentos(hist).strip()
+        historico_final = re.sub(r'^-\s*', '', historico_final)
+
+        if not historico_final:
+            return None  # Em vez de nomear como lançamento, descartamos se estiver vazio
+
+        return {
+            "DATA": transacao["data"],
+            "HISTORICO": historico_final,
+            "VALOR": valor_final,
+            "TIPO": tipo
+        }

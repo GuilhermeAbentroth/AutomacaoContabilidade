@@ -1,10 +1,12 @@
 import os
 import re
+import fitz  # PyMuPDF (A nossa nova "arma" para ler PDFs perfeitamente)
 import pdfplumber
 from base_processor import BaseProcessor
 
+
 # ==========================================
-# CLASSE 1: SANTANDER V1 (Contexto de Data)
+# CLASSE 1: SANTANDER V1 (Mantida Intacta)
 # ==========================================
 class SantanderProcessorV1(BaseProcessor):
     def __init__(self, pasta_pdf, pasta_excel):
@@ -31,7 +33,8 @@ class SantanderProcessorV1(BaseProcessor):
 
                     for linha in linhas:
                         linha_limpa = linha.strip()
-                        match_cabecalho = re.search(r',\s*(\d{1,2})\s+de\s+([a-zA-ZçÇ]+)\s+de\s+(\d{4})', linha_limpa, re.IGNORECASE)
+                        match_cabecalho = re.search(r',\s*(\d{1,2})\s+de\s+([a-zA-ZçÇ]+)\s+de\s+(\d{4})', linha_limpa,
+                                                    re.IGNORECASE)
 
                         if match_cabecalho:
                             dia = match_cabecalho.group(1).zfill(2)
@@ -80,7 +83,7 @@ class SantanderProcessorV1(BaseProcessor):
 
 
 # ==========================================
-# CLASSE 2: SANTANDER V2 (Empresas / Tabela)
+# CLASSE 2: SANTANDER V2 (Empresas - Y-Bounding Espacial)
 # ==========================================
 class SantanderProcessorV2(BaseProcessor):
     def __init__(self, pasta_pdf, pasta_excel):
@@ -88,76 +91,122 @@ class SantanderProcessorV2(BaseProcessor):
         self.nome_modelo = "SANTANDER_V2"
 
     def processar(self, arquivo, log_func):
-        """
-        Extrai dados do Extrato Santander Empresas.
-        Lê linhas no formato: DD/MM/AAAA Histórico NumDoc Valor [Saldo]
-        """
-        log_func(f"Lendo SANTANDER V2 (Empresas): {arquivo}")
+        log_func(f"Lendo Santander V2 (Regra Stone c/ Exclusão Final): {arquivo}")
         caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
-        registros = []
+
+        import fitz  # PyMuPDF
 
         try:
-            with pdfplumber.open(caminho_pdf) as pdf:
-                for page in pdf.pages:
-                    texto = page.extract_text()
-                    if not texto: continue
+            doc = fitz.open(caminho_pdf)
+            texto_global = ""
 
-                    linhas = texto.split('\n')
-                    for linha in linhas:
-                        linha_limpa = linha.strip()
+            for page in doc:
+                texto = page.get_text("text")
+                linhas = texto.split('\n')
 
-                        # 1. Identifica o início da linha com Data (Ex: 30/06/2025)
-                        match_data = re.match(r'^(\d{2}/\d{2}/\d{4})\s+(.*)', linha_limpa)
-                        if not match_data: continue
+                for linha in linhas:
+                    linha_str = linha.strip()
+                    if not linha_str: continue
+                    linha_up = linha_str.upper()
 
-                        val_data = match_data.group(1)
-                        resto = match_data.group(2)
+                    # Ignora lixo óbvio do cabeçalho
+                    if "SANTANDER" in linha_up and "EMPRESA" in linha_up: continue
+                    if "AGÊNCIA:" in linha_up or "AGENCIA:" in linha_up or "CONTA:" in linha_up: continue
+                    if "PERÍODOS:" in linha_up or "PERIODOS:" in linha_up or "DATA/HORA:" in linha_up: continue
+                    if linha_up in ["DATA", "HISTÓRICO", "DOCUMENTO", "VALOR (R$)", "SALDO (R$)"]: continue
+                    if re.match(r'^\d+/\d+$', linha_str): continue  # Elimina paginação "1/3"
 
-                        # 2. Busca valores monetários na linha (Ex: -46,00 ou 33.000,00)
-                        # Este padrão captura números com vírgula e ponto, com ou sem o sinal de negativo
-                        matches_valor = list(re.finditer(r'-?[\d\.]*,\d{2}', resto))
-                        if not matches_valor: continue
+                    texto_global += " " + linha_str
 
-                        # O primeiro valor encontrado é sempre o da transação (o segundo, se houver, é o saldo)
-                        val_str_raw = matches_valor[0].group(0)
+            # Limpa espaços duplos
+            texto_global = re.sub(r'\s+', ' ', texto_global).strip()
 
-                        eh_negativo = "-" in val_str_raw
-                        val_clean = self.limpar_valor(val_str_raw.replace("-", ""))
+            # =========================================================
+            # A FACADA NAS DATAS (Divide perfeitamente as transações)
+            # =========================================================
+            chunks = re.split(r'(?=\b\d{2}/\d{2}/\d{4}\b)', texto_global)
 
-                        if val_clean == 0: continue
+            registros = []
+            for chunk in chunks:
+                chunk = chunk.strip()
+                if not re.match(r'^\d{2}/\d{2}/\d{4}', chunk): continue
 
-                        tipo = "DEBITO" if eh_negativo else "CREDITO"
-                        valor_final = -abs(val_clean) if eh_negativo else abs(val_clean)
+                data_str = chunk[:10]
+                resto = chunk[10:].strip()
 
-                        # 3. Limpeza do Histórico (Subtração)
-                        desc = resto
-                        for m in matches_valor:
-                            desc = desc.replace(m.group(0), "") # Remove o valor e o saldo
+                matches_valor = list(re.finditer(r'-?[\d\.]*,\d{2}', resto))
+                if not matches_valor: continue
 
-                        # Remove números de documentos longos (ex: 000000, 322169)
-                        desc = re.sub(r'\b\d{5,}\b', '', desc)
-                        desc = re.sub(r'\s+', ' ', desc).strip()
+                # O primeiro valor é SEMPRE a transação financeira
+                val_str_raw = matches_valor[0].group(0)
 
-                        if "SALDO" in desc.upper(): continue
-                        if not desc: desc = "HISTORICO NAO IDENTIFICADO"
+                # Remove TODOS os valores e saldos da string do histórico
+                for m in matches_valor:
+                    resto = resto.replace(m.group(0), "")
 
-                        registros.append({
-                            "DATA": val_data,
-                            "HISTORICO": self.remover_acentos(desc).upper(),
-                            "VALOR": valor_final,
-                            "TIPO": tipo
-                        })
+                hist_puro = resto.upper()
+                hist_puro = re.sub(r'\b\d{5,}\b', '', hist_puro)  # Limpa IDs de documentos
 
-            # 4. Finalização
+                # Guilhotina Local: Limpa o texto residual do rodapé
+                marcadores_fim = [
+                    "ENTENDA A COMPOS",
+                    "SALDO DE CONTAMAX",
+                    "A- SALDO DE CONTA",
+                    "B-SALDO BLOQUEADO",
+                    "C-PROVISAO",
+                    "RESUMO DOS LIMITES",
+                    "POSICAO EM:",
+                    "POSIÇÃO EM:",
+                    "SALDO DISPONIVEL",
+                    "SALDO DISPONÍVEL"
+                ]
+
+                for marcador in marcadores_fim:
+                    if marcador in hist_puro:
+                        hist_puro = hist_puro.split(marcador)[0]
+
+                hist_puro = re.sub(r'\s+', ' ', hist_puro).strip()
+
+                # Ignora a linha de Saldo Anterior do topo
+                if "SALDO ANTERIOR" in hist_puro and len(hist_puro) < 25:
+                    continue
+
+                historico_final = self.remover_acentos(hist_puro)
+                if not historico_final: historico_final = "LANCAMENTO SANTANDER"
+
+                val_clean = self.limpar_valor(val_str_raw.replace("-", "").replace("+", ""))
+                if val_clean == 0: continue
+
+                eh_negativo = "-" in val_str_raw
+                tipo = "DEBITO" if eh_negativo else "CREDITO"
+                valor_final = -abs(val_clean) if eh_negativo else abs(val_clean)
+
+                registros.append({
+                    "DATA": data_str,
+                    "HISTORICO": historico_final,
+                    "VALOR": valor_final,
+                    "TIPO": tipo
+                })
+
+            # =========================================================
+            # EXCLUSÃO DO ÚLTIMO LANÇAMENTO (SALDO FINAL)
+            # =========================================================
+            # Aqui aplicamos a sua regra: apagamos a última linha coletada!
+            if registros:
+                registros.pop()
+
+            # =========================================================
+            # FINALIZAÇÃO
+            # =========================================================
             if registros:
                 df = self.preparar_dataframe(registros)
                 if df is not None:
                     nome_base = os.path.splitext(arquivo)[0] + "_V2"
                     return self.salvar_arquivo(df, nome_base)
-            else:
-                log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
-                return None
+
+            log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
+            return None
 
         except Exception as e:
-            log_func(f"Erro ao processar Santander V2 {arquivo}: {e}", "erro")
+            log_func(f"Erro Santander V2 {arquivo}: {e}", "erro")
             return None
