@@ -500,6 +500,9 @@ class SistemaUnificadoGUI:
     def tela_escolha_pagbank(self):
         self.construir_tela_unico_modelo("PagBank", "PAGBANK.png", "#8BC34A", self.contabil.fluxo_pagbank)
 
+    def tela_escolha_infinitepay(self):
+        self.construir_tela_unico_modelo("InfinitePay", "INFINITE.png", "#5A2D82", self.contabil.fluxo_infinitepay)
+
     def tela_escolha_mercadopago(self):
         self.construir_tela_unico_modelo("Mercado Pago", "MERCADOPAGO.png", "#00B1EA", self.contabil.fluxo_mercadopago)
 
@@ -670,6 +673,9 @@ class SistemaUnificadoGUI:
                       fg_color="#006B3F", hover_color="#004529").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="iFood", command=self.tela_escolha_ifood, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#EA1D2C", hover_color="#b3121f").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="InfinitePay", command=self.tela_escolha_infinitepay,
+                      width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#5A2D82", hover_color="#452263").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="Itaú", command=self.tela_escolha_itau, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#EC7000", hover_color="#D35400").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="MagaluPay", command=self.tela_escolha_magalupay, width=btn_w, height=btn_h,
@@ -678,14 +684,15 @@ class SistemaUnificadoGUI:
         ctk.CTkButton(f_b2, text="Mercado Pago", command=self.tela_escolha_mercadopago, width=btn_w, height=btn_h,
                       font=f_font,
                       fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
-        ctk.CTkButton(f_b2, text="Nubank", command=self.tela_escolha_nubank, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#8A05BE", hover_color="#6B0394").pack(side="left", padx=10)
+
 
 
 
 
         f_b3 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b3.pack(pady=10)
+        ctk.CTkButton(f_b3, text="Nubank", command=self.tela_escolha_nubank, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#8A05BE", hover_color="#6B0394").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="PagBank", command=self.tela_escolha_pagbank, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#8BC34A", hover_color="#649131").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="Santander", command=self.tela_escolha_santander, width=btn_w, height=btn_h,

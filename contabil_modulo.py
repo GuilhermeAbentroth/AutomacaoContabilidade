@@ -214,6 +214,33 @@ class ContabilModulo:
 
         log_msg(f"FIM ITAÚ - {time.time() - start:.2f}s", "info")
 
+    def fluxo_infinitepay(self, log_msg, bridge):
+        from processadores.infinitepay import InfinitePayProcessor
+        import time
+
+        start = time.time()
+        log_msg("Iniciando conversão da InfinitePay...")
+        processor = InfinitePayProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        arquivos = self.filtrar_arquivos(['infinite', 'infinitepay'])
+        excels = []
+
+        for arquivo in arquivos:
+            try:
+                resultado = processor.processar(arquivo, log_msg)
+                if resultado:
+                    excels.append(resultado)
+            except Exception as e:
+                log_msg(f"Erro no processador InfinitePay: {e}", "erro")
+
+        if excels:
+            log_msg(f"Sucesso! {len(excels)} arquivo(s) processado(s).")
+            if callable(bridge):
+                bridge(excels)
+        else:
+            log_msg("Nenhum arquivo da InfinitePay foi convertido.", "erro")
+            if callable(bridge): bridge([])
+
     def fluxo_pagbank(self, log_func, finalizar_func):
         from processadores.pagbank import PagbankProcessor
         import time
