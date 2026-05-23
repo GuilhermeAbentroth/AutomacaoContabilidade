@@ -2,6 +2,7 @@
     "ultimo_caminho": "C:\\Users\\guilh\\Desktop\\Automatiza\u00e7\u00e3o Pr\u00e1tica v2.0\\saida de arquivos",
     "pasta_jpype": "C:/Users/guilh/Desktop/dependencias/ponte_java",
     "pasta_playwright": "C:/Users/guilh/Desktop/dependencias/driver_navegador",
+    "caminho_banco": "C:\\Users\\guilh\\Desktop\\Automatiza\u00e7\u00e3o Pr\u00e1tica v2.0\\dados_escritorio.db",
     "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "velocidade": "3",
     "licenca": "QUJFTlRST1RIfDIwMjYtMTItMzF8N2M0Y2FiNGU3NDAzYzExMA=="

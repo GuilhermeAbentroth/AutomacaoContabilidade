@@ -10,10 +10,8 @@ import hashlib
 from datetime import datetime
 from fiscal_api_modulo import FiscalAPIModulo
 
-
 # =========================================================================
 # IMPORTAÇÃO DA CHAVE DE SEGURANÇA EXTERNA
-# Certifique-se de que o arquivo "credenciais.py" existe na mesma pasta!
 # =========================================================================
 from credenciais import CHAVE_SECRETA
 
@@ -23,8 +21,7 @@ try:
     TEM_PILLOW = True
 except ImportError:
     TEM_PILLOW = False
-    print("AVISO: Biblioteca 'Pillow' não instalada. As imagens podem não redimensionar corretamente.")
-    print("Instale usando: pip install Pillow")
+    print("AVISO: Biblioteca 'Pillow' não instalada.")
 
 
 def resource_path(relative_path):
@@ -41,19 +38,32 @@ from contabil_modulo import ContabilModulo
 from fiscal_modulo import FiscalModulo
 from nfse_modulo import PortalNacionalModulo
 from betha_modulo import EmissorBethaModulo
+from logger_utils import AutomationLogger
+from betha_certificado_modulo import EmissorBethaCertificado
+from betha_manual_modulo import EmissorBethaManual
 
-# Configuração Global do CustomTkinter
-ctk.set_appearance_mode("System")  # Adapta-se ao tema do Windows (Light/Dark)
-ctk.set_default_color_theme("blue")  # Tema de cores primárias
+ctk.set_appearance_mode("System")
+ctk.set_default_color_theme("blue")
 
 
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v6.8")
-        self.root.geometry("1100x830")
-        self.root.resizable(True, True)
+        self.root.title("Automação Abentroth v8.0")
+        largura_janela = 1100
+        altura_janela = 900
 
+        # Captura a resolução real do monitor do usuário
+        largura_tela = self.root.winfo_screenwidth()
+        altura_tela = self.root.winfo_screenheight()
+
+        # Calcula as coordenadas X e Y para centralizar
+        pos_x = (largura_tela // 2) - (largura_janela // 2)
+        pos_y = (altura_tela // 2) - (altura_janela // 2) - 40  # O -40 compensa a barra de tarefas do Windows
+
+        # Define o tamanho e a posição inicial (+X+Y)
+        self.root.geometry(f"{largura_janela}x{altura_janela}+{pos_x}+{pos_y}")
+        self.root.resizable(True, True)
 
         if getattr(sys, 'frozen', False):
             self.pasta_exe = os.path.dirname(sys.executable)
@@ -68,22 +78,24 @@ class SistemaUnificadoGUI:
         except:
             pass
 
-        # Substituição do Frame padrão pelo CTkFrame
         self.container = ctk.CTkFrame(self.root, fg_color="transparent")
         self.container.pack(fill="both", expand=True, padx=10, pady=10)
 
+        # Inicialização dos Módulos
         self.contabil = ContabilModulo(self)
         self.fiscal = FiscalModulo(self)
         self.nfse = PortalNacionalModulo(self)
-        self.betha = EmissorBethaModulo(self)
         self.fiscal_api = FiscalAPIModulo(self)
+        self.logger_automacao = AutomationLogger(self.pasta_exe)
+
+        self.betha = EmissorBethaModulo(self)
+        self.betha_cert = EmissorBethaCertificado(self)
+        self.betha_manual = EmissorBethaManual(self)
 
         self.mostrar_menu_inicial()
 
     def carregar_imagem_ajustada(self, path_imagem, max_size=(300, 180)):
-        if not TEM_PILLOW:
-            return None
-
+        if not TEM_PILLOW: return None
         if not os.path.exists(path_imagem):
             img = Image.new('RGB', max_size, color='#f0f0f0')
         else:
@@ -92,8 +104,6 @@ class SistemaUnificadoGUI:
             except Exception as e:
                 print(f"Erro imagem: {e}")
                 img = Image.new('RGB', max_size, color='#ffcccc')
-
-        # O CustomTkinter faz o redimensionamento nativo e perfeito!
         return ctk.CTkImage(light_image=img, dark_image=img, size=max_size)
 
     def carregar_todas_configs(self):
@@ -101,6 +111,7 @@ class SistemaUnificadoGUI:
             "ultimo_caminho": os.path.join(self.pasta_exe, "saida de arquivos"),
             "pasta_jpype": "",
             "pasta_playwright": "",
+            "caminho_banco": os.path.join(self.pasta_exe, "dados_escritorio.db"),
             "chrome_path": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             "velocidade": "1",
             "licenca": ""
@@ -115,62 +126,46 @@ class SistemaUnificadoGUI:
         return padrao
 
     def salvar_config(self, chave=None, valor=None):
-        if chave and valor is not None:
-            self.configuracoes[chave] = valor
+        if chave and valor is not None: self.configuracoes[chave] = valor
         try:
             with open(self.caminho_config, "w", encoding="utf-8") as f:
                 json.dump(self.configuracoes, f, indent=4)
         except:
             pass
 
-    # =========================================================================
-    # LÓGICA DE LICENCIAMENTO
-    # =========================================================================
     def licenca_valida(self):
         chave = self.configuracoes.get("licenca", "")
-        if not chave:
-            return False
-
+        if not chave: return False
         try:
             texto_decodificado = base64.b64decode(chave.encode('utf-8')).decode('utf-8')
             partes = texto_decodificado.split('|')
-
             if len(partes) == 3 and partes[0] == "ABENTROTH":
                 data_str = partes[1]
                 assinatura_recebida = partes[2]
-
                 texto_base = f"ABENTROTH|{data_str}"
-
-                # USA A CHAVE DO ARQUIVO EXTERNO (credenciais.py)
                 assinatura_calculada = hmac.new(CHAVE_SECRETA, texto_base.encode('utf-8'), hashlib.sha256).hexdigest()[
                     :16]
-
                 if assinatura_recebida == assinatura_calculada:
                     data_validade = datetime.strptime(data_str, "%Y-%m-%d")
                     hoje = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-                    if hoje <= data_validade:
-                        return True
-                else:
-                    # ==========================================================
-                    # O SUSTO: O Lacre foi quebrado!
-                    # ==========================================================
-                    print("ALERTA: Tentativa de manipulação de licença detectada!")
-
-                    from tkinter import messagebox
-                    messagebox.showerror(
-                        "🔒 VIOLAÇÃO DE SEGURANÇA DETECTADA",
-                        "⚠️ ALERTA CRÍTICO DE SISTEMA ⚠️\n\n"
-                        "O sistema detectou uma tentativa de manipulação, alteração ou falsificação da chave de licença.\n\n"
-                        "A integridade do software foi comprometida. O acesso aos módulos de automação foi severamente bloqueado por motivos de segurança.\n\n"
-                        "Se este erro persistir, o administrador será notificado com o log de atividades."
-                    )
-                    return False
-
-        except Exception:
+                    if hoje <= data_validade: return True
+        except:
             return False
-
         return False
+
+    def obter_data_validade(self):
+        """Decodifica a licença ativa e extrai a data formatada em padrão nacional."""
+        chave = self.configuracoes.get("licenca", "")
+        if not chave: return None
+        try:
+            texto_decodificado = base64.b64decode(chave.encode('utf-8')).decode('utf-8')
+            partes = texto_decodificado.split('|')
+            if len(partes) == 3 and partes[0] == "ABENTROTH":
+                dt = datetime.strptime(partes[1], "%Y-%m-%d")
+                return dt.strftime("%d/%m/%Y")
+        except:
+            pass
+        return None
 
     def verificar_acesso_modulo(self, comando_modulo):
         if self.licenca_valida():
@@ -182,125 +177,77 @@ class SistemaUnificadoGUI:
         aviso = ctk.CTkToplevel(self.root)
         aviso.title("Acesso Bloqueado")
         aviso.geometry("400x180")
-        aviso.resizable(False, False)
-
-        # Truque para forçar o ícone em janelas CTkToplevel
         try:
             aviso.after(200, lambda: aviso.iconbitmap(resource_path("ico.ico")))
         except:
             pass
-
-        aviso.transient(self.root)
+        aviso.transient(self.root);
         aviso.grab_set()
-
         f_msg = ctk.CTkFrame(aviso, fg_color="transparent")
         f_msg.pack(pady=20)
         ctk.CTkLabel(f_msg, text="❌ Licença expirada ou não cadastrada.", font=("Arial", 14, "bold"),
                      text_color="#d32f2f").pack()
-        ctk.CTkLabel(f_msg, text="Por favor, insira uma nova chave para continuar.", font=("Arial", 12)).pack(pady=5)
-
         f_btns = ctk.CTkFrame(aviso, fg_color="transparent")
         f_btns.pack(pady=10)
-
-        def acao_alterar():
-            aviso.destroy()
-            self.abrir_tela_licenca()
-
-        ctk.CTkButton(f_btns, text="Fechar", command=aviso.destroy, width=100, fg_color="gray",
-                      hover_color="darkgray").pack(side=tk.LEFT, padx=10)
-        ctk.CTkButton(f_btns, text="Alterar Chave", command=acao_alterar, width=120, fg_color="#242424",
-                      hover_color="#1a1a1a").pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(f_btns, text="Fechar", command=aviso.destroy, width=100, fg_color="gray").pack(side=tk.LEFT,
+                                                                                                     padx=10)
+        ctk.CTkButton(f_btns, text="Alterar Chave", command=lambda: [aviso.destroy(), self.abrir_tela_licenca()],
+                      width=120).pack(side=tk.LEFT, padx=10)
 
     def abrir_tela_licenca(self):
         janela = ctk.CTkToplevel(self.root)
         janela.title("Gerenciador de Licença")
         janela.geometry("450x350")
-        janela.resizable(False, False)
-
         try:
             janela.after(200, lambda: janela.iconbitmap(resource_path("ico.ico")))
         except:
             pass
-
-        janela.transient(self.root)
+        janela.transient(self.root);
         janela.grab_set()
 
         f_status = ctk.CTkFrame(janela, fg_color="transparent")
         f_status.pack(pady=20)
 
         if self.licenca_valida():
-            try:
-                chave = self.configuracoes.get("licenca", "")
-                texto = base64.b64decode(chave.encode('utf-8')).decode('utf-8')
-                data_str = texto.split('|')[1]
-                data_br = datetime.strptime(data_str, "%Y-%m-%d").strftime("%d/%m/%Y")
-                ctk.CTkLabel(f_status, text="✅ Status: ATIVA", font=("Arial", 16, "bold"), text_color="#228B22").pack()
-                ctk.CTkLabel(f_status, text=f"Válida até: {data_br}", font=("Arial", 14)).pack()
-            except:
-                pass
+            v_data = self.obter_data_validade()
+            txt_status = f"✅ Status: ATIVA\n📅 Válida até: {v_data}" if v_data else "✅ Status: ATIVA"
+            ctk.CTkLabel(f_status, text=txt_status, font=("Arial", 16, "bold"), text_color="#228B22",
+                         justify="center").pack()
         else:
             ctk.CTkLabel(f_status, text="❌ Status: EXPIRADA / INVÁLIDA", font=("Arial", 16, "bold"),
                          text_color="#d32f2f").pack()
 
         f_input = ctk.CTkFrame(janela, fg_color="transparent")
         f_input.pack(pady=10)
-        ctk.CTkLabel(f_input, text="Insira a nova chave de ativação:", font=("Arial", 12)).pack()
-
         var_chave = tk.StringVar()
-        ent_chave = ctk.CTkEntry(f_input, textvariable=var_chave, width=350, height=35, font=("Arial", 12),
-                                 justify="center")
+        ent_chave = ctk.CTkEntry(f_input, textvariable=var_chave, width=350, justify="center")
         ent_chave.pack(pady=10)
 
-        def salvar_nova_licenca():
-            nova = var_chave.get().strip()
-            if nova:
-                self.salvar_config("licenca", nova)
-                if self.licenca_valida():
-                    messagebox.showinfo("Sucesso", "Licença ativada com sucesso!")
-                    janela.destroy()
-                else:
-                    messagebox.showerror("Erro", "A chave inserida é inválida ou já expirou.")
+        def salvar():
+            self.salvar_config("licenca", var_chave.get().strip())
+            if self.licenca_valida():
+                messagebox.showinfo("Sucesso", "Ativada!")
+                janela.destroy()
+                self.mostrar_menu_inicial()
             else:
-                messagebox.showwarning("Atenção", "Insira uma chave válida.")
+                messagebox.showerror("Erro", "Chave Inválida.")
 
-        ctk.CTkButton(f_input, text="Ativar Licença", command=salvar_nova_licenca, fg_color="#228B22",
-                      hover_color="#1e7a1e", font=("Arial", 14, "bold"), width=180, height=40).pack(pady=10)
-
-    # =========================================================================
+        ctk.CTkButton(f_input, text="Ativar Licença", command=salvar, fg_color="#228B22", width=180, height=40).pack(
+            pady=10)
 
     def mostrar_info_sistema(self):
         janela = ctk.CTkToplevel(self.root)
-        janela.title("Sobre o Sistema")
+        janela.title("Sobre")
         janela.geometry("450x300")
-        janela.resizable(False, False)
-
-        try:
-            janela.after(200, lambda: janela.iconbitmap(resource_path("ico.ico")))
-        except:
-            pass
-
-        janela.transient(self.root)
-        janela.grab_set()
-
-        info_texto = (
-            "Autor: Guilherme Abentroth\n"
-            "Versão: 6.8\n"
-            "Data da Versão: 21/04/2026\n\n"
-            "Notas da Versão:\n"
-            "1. Atualização Conversores Extratos.\n"
-            "2. Ajuste de ordem dos conversores. \n"
-            "3. Criacao de 2 novos conversores. \n"
-
-        )
+        info_texto = "Autor: Guilherme Abentroth\nVersão: 8.0\nData: 22/05/2026\n\n"
+        "1. Envio de e-mail Tomador\n"
+        "2. Ajuste Tomador CPF"
 
         f_info = ctk.CTkFrame(janela, fg_color="transparent")
         f_info.pack(pady=20, padx=20, fill="both", expand=True)
-
-        ctk.CTkLabel(f_info, text="Automação Abentroth", font=("Arial", 18, "bold")).pack(pady=5)
+        ctk.CTkLabel(f_info, text="Automação Abentroth", font=("Arial", 18, "bold")).pack()
         ctk.CTkLabel(f_info, text=info_texto, font=("Arial", 12), justify="left").pack(pady=10)
-
-        ctk.CTkButton(f_info, text="Fechar", command=janela.destroy, width=120, fg_color="#242424",
-                      hover_color="#1a1a1a").pack(pady=10)
+        ctk.CTkButton(f_info, text="Fechar", command=janela.destroy).pack()
 
     def abrir_tela_config(self):
         senha = simpledialog.askstring("Restrito", "Digite a senha de admin:", show='*')
@@ -311,13 +258,11 @@ class SistemaUnificadoGUI:
         janela = ctk.CTkToplevel(self.root)
         janela.title("Configurações")
         janela.geometry("800x400")
-
         try:
             janela.after(200, lambda: janela.iconbitmap(resource_path("ico.ico")))
         except:
             pass
-
-        janela.transient(self.root)
+        janela.transient(self.root);
         janela.grab_set()
 
         f_main = ctk.CTkFrame(janela)
@@ -326,9 +271,7 @@ class SistemaUnificadoGUI:
         def criar_linha(txt, chave):
             f = ctk.CTkFrame(f_main, fg_color="transparent")
             f.pack(fill="x", pady=10)
-
             ctk.CTkLabel(f, text=txt, font=("Arial", 12, "bold"), width=150, anchor="w").pack(side=tk.LEFT)
-
             var = tk.StringVar(value=self.configuracoes.get(chave, ""))
             ctk.CTkEntry(f, textvariable=var, width=450).pack(side=tk.LEFT, padx=10)
 
@@ -345,7 +288,6 @@ class SistemaUnificadoGUI:
             f = ctk.CTkFrame(f_main, fg_color="transparent")
             f.pack(fill="x", pady=10)
             ctk.CTkLabel(f, text="Velocidade:", font=("Arial", 12, "bold"), width=150, anchor="w").pack(side=tk.LEFT)
-
             var = tk.StringVar(value=self.configuracoes.get("velocidade", "1"))
             op = ctk.CTkOptionMenu(f, variable=var, values=["1", "2", "3"], width=100)
             op.pack(side=tk.LEFT, padx=10)
@@ -356,12 +298,13 @@ class SistemaUnificadoGUI:
 
             ctk.CTkButton(f, text="OK", command=save_vel, width=50).pack(side=tk.LEFT, padx=105)
 
+        criar_linha("Caminho Banco (Rede):", "caminho_banco")
         criar_linha("Pasta JPype:", "pasta_jpype")
         criar_linha("Pasta Playwright:", "pasta_playwright")
         criar_linha("Chrome Path:", "chrome_path")
         criar_vel()
 
-    def log_msg(self, mensagem, tipo="info", divisor=False):
+    def log_msg(self, message, tipo="info", divisor=False):
         if hasattr(self, 'txt_log') and self.txt_log.winfo_exists():
             timestamp = datetime.now().strftime('%H:%M:%S')
             self.txt_log.config(state='normal')
@@ -369,7 +312,7 @@ class SistemaUnificadoGUI:
             tag = tipo if tipo in ["erro", "sucesso"] else "info"
             self.txt_log.tag_config("erro", foreground="red")
             self.txt_log.tag_config("sucesso", foreground="green")
-            self.txt_log.insert(tk.END, f"[{timestamp}] {mensagem}\n", tag)
+            self.txt_log.insert(tk.END, f"[{timestamp}] {message}\n", tag)
             self.txt_log.see(tk.END)
             self.txt_log.config(state='disabled')
             self.root.update()
@@ -383,69 +326,156 @@ class SistemaUnificadoGUI:
             try:
                 img_pil = Image.open(path_logo)
                 w, h = img_pil.size
-                nova_largura, nova_altura = int(w / 3), int(h / 3)
-
-                self.img_logo = ctk.CTkImage(light_image=img_pil, dark_image=img_pil, size=(nova_largura, nova_altura))
-
+                self.img_logo = ctk.CTkImage(light_image=img_pil, dark_image=img_pil, size=(int(w / 3), int(h / 3)))
                 ctk.CTkLabel(parent, text="", image=self.img_logo).pack()
-            except Exception as e:
-                ctk.CTkLabel(parent, text="SISTEMA AUTOMAÇÃO", font=("Arial", 24, "bold")).pack()
+            except:
+                pass
         else:
             ctk.CTkLabel(parent, text="SISTEMA AUTOMAÇÃO", font=("Arial", 24, "bold")).pack()
 
+    # -------------------------------------------------------------------------
+    # MENU INICIAL
+    # -------------------------------------------------------------------------
     def mostrar_menu_inicial(self):
         self.limpar_tela()
-
-        # Barra de Menu Topo
         f_top = ctk.CTkFrame(self.container, fg_color="transparent")
         f_top.pack(fill="x", pady=10)
 
-        ctk.CTkButton(f_top, text="🔑 Licença", command=self.abrir_tela_licenca,
-                      width=100, fg_color="transparent", border_width=1, text_color=("black", "white")).pack(
-            side="right", padx=5)
-        ctk.CTkButton(f_top, text="⚙ Config", command=self.abrir_tela_config,
-                      width=80, fg_color="transparent", text_color=("black", "white")).pack(side="right", padx=5)
-        ctk.CTkButton(f_top, text="ℹ️ Info", command=self.mostrar_info_sistema,
-                      width=80, fg_color="transparent", text_color=("black", "white")).pack(side="right", padx=5)
+        if self.licenca_valida():
+            validade_str = self.obter_data_validade()
+            txt_licenca_top = f"🔑 Licença ativa até: {validade_str}" if validade_str else "🔑 Licença Ativa"
+            cor_licenca_top = "#228B22"
+        else:
+            txt_licenca_top = "❌ Licença Expirada / Inválida"
+            cor_licenca_top = "#d32f2f"
 
-        # Logo
+        ctk.CTkLabel(f_top, text=txt_licenca_top, font=("Arial", 12, "bold"), text_color=cor_licenca_top).pack(
+            side="left", padx=15)
+
+        ctk.CTkButton(f_top, text="🔑 Licença", command=self.abrir_tela_licenca, width=100, fg_color="transparent",
+                      border_width=1).pack(side="right", padx=5)
+        ctk.CTkButton(f_top, text="⚙ Config", command=self.abrir_tela_config, width=80, fg_color="transparent").pack(
+            side="right", padx=5)
+        ctk.CTkButton(f_top, text="ℹ️ Info", command=self.mostrar_info_sistema, width=80, fg_color="transparent").pack(
+            side="right", padx=5)
+
         f_l = ctk.CTkFrame(self.container, fg_color="transparent")
         f_l.pack(pady=40)
         self.carregar_logo(f_l)
 
-        # Grid Central para os Módulos
         f_b = ctk.CTkFrame(self.container, fg_color="transparent")
         f_b.pack(pady=50)
 
-        ctk.CTkButton(f_b, text="FISCAL", command=lambda: self.verificar_acesso_modulo(self.tela_fiscal),
-                      width=220, height=80, font=("Arial", 20, "bold"), fg_color="#228B22", hover_color="#1e7a1e").grid(
-            row=0, column=0, padx=20, pady=20)
+        btn_w = 220;
+        btn_h = 80
 
-        ctk.CTkButton(f_b, text="CONTÁBIL", command=lambda: self.verificar_acesso_modulo(self.tela_contabil),
-                      width=220, height=80, font=("Arial", 20, "bold"), fg_color="#005A9C", hover_color="#00467a").grid(
-            row=0, column=1, padx=20, pady=20)
+        btn_fiscal = ctk.CTkButton(
+            f_b,
+            text="FISCAL",
+            command=lambda: self.verificar_acesso_modulo(self.tela_fiscal),
+            width=btn_w,
+            height=btn_h,
+            font=("Arial", 20, "bold"),
+            fg_color="#228B22",
+            hover_color="#228B22",  # Trava o fundo verde
+            border_width=2,
+            border_color="#228B22"  # Borda invisível inicial
+        )
+        btn_fiscal.grid(row=0, column=0, padx=20, pady=20)
 
-        ctk.CTkButton(f_b, text="PORTAL NACIONAL", command=lambda: self.verificar_acesso_modulo(self.nfse.tela_nfse),
-                      width=220, height=80, font=("Arial", 20, "bold"), fg_color="#f39200", hover_color="#cc7a00").grid(
-            row=0, column=2, padx=20, pady=20)
+        # Eventos de Hover do Fiscal
+        btn_fiscal.bind("<Enter>", lambda e: btn_fiscal.configure(border_color=("black", "white")))
+        btn_fiscal.bind("<Leave>", lambda e: btn_fiscal.configure(border_color="#228B22"))
 
-        ctk.CTkButton(f_b, text="EMISSOR NFSE",
-                      command=lambda: self.verificar_acesso_modulo(self.betha.tela_emissor_betha),
-                      width=220, height=80, font=("Arial", 20, "bold"), fg_color="#8e44ad", hover_color="#732d91").grid(
-            row=0, column=3, padx=20, pady=20)
+        # === BOTÃO CONTÁBIL ===
+        btn_contabil = ctk.CTkButton(
+            f_b,
+            text="CONTÁBIL",
+            command=lambda: self.verificar_acesso_modulo(self.tela_contabil),
+            width=btn_w,
+            height=btn_h,
+            font=("Arial", 20, "bold"),
+            fg_color="#005A9C",
+            hover_color="#005A9C",  # Trava o fundo azul
+            border_width=2,
+            border_color="#005A9C"  # Borda invisível inicial
+        )
+        btn_contabil.grid(row=0, column=1, padx=20, pady=20)
 
-        #BOTAO OCULTO
-        #ctk.CTkButton(f_b, text="EMISSOR NFSE LOTE (NOVA API)",
-        #              command=self.fiscal_api.tela_emissor_betha_api,
-        #              width=400, height=60, font=("Arial", 16, "bold"),
-        #              fg_color="#27ae60", hover_color="#2ecc71").grid(
-        #    row=1, column=0, columnspan=4, pady=(10, 20))
+        # Eventos de Hover do Contábil
+        btn_contabil.bind("<Enter>", lambda e: btn_contabil.configure(border_color=("black", "white")))
+        btn_contabil.bind("<Leave>", lambda e: btn_contabil.configure(border_color="#005A9C"))
 
+        btn_portal = ctk.CTkButton(
+            f_b,
+            text="PORTAL NACIONAL",
+            command=lambda: self.verificar_acesso_modulo(self.nfse.tela_nfse),
+            width=btn_w,
+            height=btn_h,
+            font=("Arial", 20, "bold"),
+            fg_color="#f39200",
+            hover_color="#f39200",  # Trava a cor de fundo no hover
+            border_width=2,
+            border_color="#f39200"  # Borda invisível inicial para não dar "solavanco" no layout
+        )
+        # 2. Posiciona o botão na Grid
+        btn_portal.grid(row=0, column=2, padx=20, pady=20)
 
-        # Rodapé
+        # 3. Adiciona os eventos de detecção do mouse (Preto para tema Claro, Branco para tema Escuro)
+        btn_portal.bind("<Enter>", lambda e: btn_portal.configure(border_color=("black", "white")))
+        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f39200"))
+
+        btn_emissor = ctk.CTkButton(
+            f_b,
+            text="EMISSOR NFSE (CERTIFICADO A1)",
+            command=lambda: self.verificar_acesso_modulo(self.tela_escolha_emissor),
+            width=400,
+            height=60,
+            font=("Arial", 16, "bold"),
+            fg_color="#27ae60",
+            hover_color="#27ae60",  # Trava o fundo verde original do emissor
+            border_width=2,
+            border_color="#27ae60"  # Borda invisível inicial para manter estabilidade
+        )
+        btn_emissor.grid(row=1, column=0, columnspan=3, pady=(10, 20))
+
+        # Eventos de Hover do Emissor NFSE
+        btn_emissor.bind("<Enter>", lambda e: btn_emissor.configure(border_color=("black", "white")))
+        btn_emissor.bind("<Leave>", lambda e: btn_emissor.configure(border_color="#27ae60"))
+
         ctk.CTkLabel(self.container, text="Powered by: Guilherme Abentroth", font=("Arial", 12)).pack(side=tk.BOTTOM,
                                                                                                       anchor="w",
                                                                                                       padx=20, pady=20)
+
+    # -------------------------------------------------------------------------
+    # TELA DE ESCOLHA (LOTE VS MANUAL)
+    # -------------------------------------------------------------------------
+    def tela_escolha_emissor(self):
+        self.limpar_tela()
+
+        f_top = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_top.pack(pady=20)
+        self.carregar_logo(f_top)
+
+        ctk.CTkLabel(self.container, text="Selecione o Modo de Emissão",
+                     font=("Arial", 22, "bold"), text_color="#27ae60").pack(pady=10)
+
+        f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
+        f_btns.pack(pady=40)
+
+        # FIX CORRIGIDO: Modificado de fields_color para fg_color
+        ctk.CTkButton(f_btns, text="📊 EMISSÃO EM LOTE (EXCEL)",
+                      command=self.betha_cert.tela_emissor_certificado,
+                      width=400, height=80, font=("Arial", 18, "bold"),
+                      fg_color="#1f538d", hover_color="#14375e").pack(pady=15)
+
+        ctk.CTkButton(f_btns, text="✍️ EMISSÃO MANUAL (CADASTRO)",
+                      command=self.betha_manual.tela_emissor_manual,
+                      width=400, height=80, font=("Arial", 18, "bold"),
+                      fg_color="#27ae60", hover_color="#1e8449").pack(pady=15)
+
+        ctk.CTkButton(f_btns, text="Voltar Menu Principal", command=self.mostrar_menu_inicial,
+                      width=400, height=80, fg_color="gray").pack(pady=30)
 
     # -------------------------------------------------------------------------
     # TELAS PADRONIZADAS COM CUSTOM TKINTER
@@ -493,7 +523,6 @@ class SistemaUnificadoGUI:
         ctk.CTkButton(f_btns, text="Voltar", command=self.tela_contabil, fg_color="gray", hover_color="darkgray",
                       width=150, height=40).pack()
 
-    # (AS TELAS DE ESCOLHA DE IMAGEM ÚNICA FICAM IGUAIS, APENAS O WRAPPER FOI ATUALIZADO)
     def tela_escolha_stone(self):
         self.construir_tela_unico_modelo("Stone", "STONE.png", "#00A868", self.contabil.fluxo_stone)
 
@@ -517,7 +546,6 @@ class SistemaUnificadoGUI:
         self.criar_tela_multi_modelos("AILOS", "#005A9C", configs)
 
     def tela_escolha_itau(self):
-        # Substitua "ITAU.png" pelo nome do ícone que você quiser usar, ou None se não tiver.
         self.construir_tela_unico_modelo("Itaú", "ITAU.png", "#EC7000", self.contabil.fluxo_itau)
 
     def tela_escolha_ifood(self):
@@ -535,9 +563,6 @@ class SistemaUnificadoGUI:
     def tela_escolha_c6(self):
         self.construir_tela_unico_modelo("C6 Bank", "C6.png", "#242424", self.contabil.fluxo_c6)
 
-    # -------------------------------------------------------------------------
-    # TELAS MULTI-IMAGEM (CAIXA, SANTANDER, BB, SICOOB)
-    # -------------------------------------------------------------------------
     def criar_tela_multi_modelos(self, nome_banco, cor_titulo, funcoes):
         self.limpar_tela()
 
@@ -550,7 +575,7 @@ class SistemaUnificadoGUI:
         f_imgs = ctk.CTkFrame(self.container, fg_color="transparent")
         f_imgs.pack(pady=10)
 
-        col = 0
+        col = 0;
         row = 0
         self._img_refs = []
 
@@ -565,7 +590,6 @@ class SistemaUnificadoGUI:
             self._img_refs.append(img_ctk)
 
             cmd = lambda c=cfg["cmd"]: c(self.log_msg, bridge)
-
             btn = ctk.CTkButton(f_op, text="", image=img_ctk, command=cmd, fg_color="transparent",
                                 hover_color="#e0e0e0")
             btn.pack()
@@ -574,7 +598,7 @@ class SistemaUnificadoGUI:
 
             col += 1
             if col > 1:
-                col = 0
+                col = 0;
                 row += 1
 
         f_log = ctk.CTkFrame(self.container)
@@ -612,7 +636,6 @@ class SistemaUnificadoGUI:
         self.criar_tela_multi_modelos("BANCO DO BRASIL", "#fdb913", configs)
 
     def tela_escolha_xp(self):
-        # A cor principal da XP é o Preto (#000000) e Dourado. Vamos usar preto para o botão.
         self.construir_tela_unico_modelo("XP Investimentos", "XP.png", "#000000", self.contabil.fluxo_xp)
 
     def tela_escolha_inter(self):
@@ -625,9 +648,6 @@ class SistemaUnificadoGUI:
         ]
         self.criar_tela_multi_modelos("SICOOB", "#00ae9d", configs)
 
-    # -------------------------------------------------------------------------
-    # TELA PRINCIPAL CONTÁBIL
-    # -------------------------------------------------------------------------
     def tela_contabil(self):
         self.limpar_tela()
 
@@ -635,7 +655,6 @@ class SistemaUnificadoGUI:
         f_l.pack(pady=10)
         self.carregar_logo(f_l)
 
-        # Log ao topo
         f_log_area = ctk.CTkFrame(self.container)
         f_log_area.pack(fill="x", padx=40, pady=10)
         ctk.CTkLabel(f_log_area, text="Log de Processamento:", font=("Arial", 12, "bold")).pack(anchor="w", padx=10)
@@ -646,9 +665,8 @@ class SistemaUnificadoGUI:
         f_b = ctk.CTkFrame(self.container, fg_color="transparent")
         f_b.pack(pady=20)
 
-        # Estilo dos botões menores
-        btn_w = 140
-        btn_h = 40
+        btn_w = 140;
+        btn_h = 40;
         f_font = ("Arial", 12, "bold")
 
         f_b1 = ctk.CTkFrame(f_b, fg_color="transparent")
@@ -664,30 +682,20 @@ class SistemaUnificadoGUI:
         ctk.CTkButton(f_b1, text="Caixa", command=self.tela_escolha_caixa, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#005CA9", hover_color="#00407a").pack(side="left", padx=10)
 
-
-
-
         f_b2 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b2.pack(pady=10)
         ctk.CTkButton(f_b2, text="Cresol", command=self.tela_escolha_cresol, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#006B3F", hover_color="#004529").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="iFood", command=self.tela_escolha_ifood, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#EA1D2C", hover_color="#b3121f").pack(side="left", padx=10)
-        ctk.CTkButton(f_b2, text="InfinitePay", command=self.tela_escolha_infinitepay,
-                      width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#5A2D82", hover_color="#452263").pack(side="left", padx=10)
+        ctk.CTkButton(f_b2, text="InfinitePay", command=self.tela_escolha_infinitepay, width=btn_w, height=btn_h,
+                      font=f_font, fg_color="#5A2D82", hover_color="#452263").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="Itaú", command=self.tela_escolha_itau, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#EC7000", hover_color="#D35400").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="MagaluPay", command=self.tela_escolha_magalupay, width=btn_w, height=btn_h,
-                      font=f_font,
-                      fg_color="#0086FF", hover_color="#006bcf").pack(side="left", padx=10)
+                      font=f_font, fg_color="#0086FF", hover_color="#006bcf").pack(side="left", padx=10)
         ctk.CTkButton(f_b2, text="Mercado Pago", command=self.tela_escolha_mercadopago, width=btn_w, height=btn_h,
-                      font=f_font,
-                      fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
-
-
-
-
+                      font=f_font, fg_color="#00B1EA", hover_color="#008CBA").pack(side="left", padx=10)
 
         f_b3 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b3.pack(pady=10)
@@ -704,17 +712,17 @@ class SistemaUnificadoGUI:
         ctk.CTkButton(f_b3, text="Stone", command=self.tela_escolha_stone, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
 
-
         f_b4 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b4.pack(pady=20)
         ctk.CTkButton(f_b4, text="XP", command=self.tela_escolha_xp, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#000000", hover_color="#333333").pack(side="left", padx=10)
         ctk.CTkButton(f_b4, text="Excel > OFX", command=lambda: self.contabil.gerar_ofx(self.log_msg), width=btn_w,
                       height=btn_h, font=f_font, fg_color="#7f8c8d", hover_color="#576162").pack(side="left", padx=10)
+        ctk.CTkButton(f_b4, text="Sanitizar OFX Caixa",
+                      command=lambda: self.contabil.fluxo_sanitizar_ofx_caixa(self.log_msg, None), width=btn_w,
+                      height=btn_h, font=f_font, fg_color="#005CA9", hover_color="#00407a").pack(side="left", padx=10)
         ctk.CTkButton(f_b4, text="Voltar Menu", command=self.mostrar_menu_inicial, fg_color="gray",
                       hover_color="darkgray", width=200, height=40).pack(side="left", padx=10)
-
-
 
     # -------------------------------------------------------------------------
     # TELA FISCAL
@@ -726,7 +734,6 @@ class SistemaUnificadoGUI:
         f_l.pack(pady=10)
         self.carregar_logo(f_l)
 
-        # Card de Seleção de Pasta
         f_c = ctk.CTkFrame(self.container)
         f_c.pack(fill="x", padx=40, pady=20)
 
@@ -737,14 +744,12 @@ class SistemaUnificadoGUI:
 
         ctk.CTkButton(f_c, text="Procurar", command=self.selecionar_p_f, width=100).pack(side=tk.LEFT, padx=15)
 
-        # Área de Log
         f_log_area = ctk.CTkFrame(self.container, fg_color="transparent")
         f_log_area.pack(fill="both", expand=True, padx=40, pady=5)
         self.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=15, state='disabled', bg="#1e1e1e",
                                                  fg="white", font=("Consolas", 10))
         self.txt_log.pack(fill="both", expand=True)
 
-        # Botões de Ação
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
         f_btns.pack(pady=20)
         ctk.CTkButton(f_btns, text="▶ INICIAR PROCESSAMENTO FISCAL", command=self.exec_f_logic,

@@ -674,6 +674,38 @@ class ContabilModulo:
         finalizar_func(excels)
         log_func(f"FIM AILOS V2 - {time.time() - start:.2f}s", "info")
 
+    def fluxo_sanitizar_ofx_caixa(self, log_func, finalizar_func):
+        from processadores.ofx_caixa import CaixaOfxSanitizer
+        import time
+
+        start = time.time()
+        # Definimos uma pasta de saída específica para os OFX limpos
+        pasta_limpos = os.path.join(self.PASTA_OFX, "LIMPOS")
+        processador = CaixaOfxSanitizer(self.PASTA_OFX, pasta_limpos)
+
+        # Filtra arquivos .ofx na pasta de OFX
+        arquivos = [f for f in os.listdir(self.PASTA_OFX) if f.lower().endswith(".ofx")]
+        processados_count = 0
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo OFX encontrado para sanitizar.", "erro")
+
+        for arquivo in arquivos:
+            resultado = processador.sanitizar(arquivo, log_func)
+            if resultado:
+                processados_count += 1
+                # REGISTRO NO EXCEL DE LOG
+                self.parent.logger_automacao.registrar(
+                    modulo="CONTABIL",
+                    categoria="EXTRATOS OFX REPROCESSADOS",
+                    descricao=f"OFX Caixa Sanitizado: {arquivo}",
+                    quantidade=1
+                )
+
+        log_func(f"FIM SANITIZAÇÃO - {processados_count} arquivos - {time.time() - start:.2f}s", "info")
+        # Aqui você decide se quer chamar o finalizar_func ou não
+        if callable(finalizar_func): finalizar_func([])
+
     def gerar_ofx(self, log_func, lista_especifica=None):
         start_ofx = time.time();
         log_func("GERANDO OFX...", "info")
