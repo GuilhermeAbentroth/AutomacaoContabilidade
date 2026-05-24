@@ -4,16 +4,11 @@ from tkinter import scrolledtext, messagebox, filedialog, simpledialog
 import os
 import sys
 import json
-import base64
-import hmac
-import hashlib
 from datetime import datetime
 from fiscal_api_modulo import FiscalAPIModulo
 
-# =========================================================================
-# IMPORTAÇÃO DA CHAVE DE SEGURANÇA EXTERNA
-# =========================================================================
-from credenciais import CHAVE_SECRETA
+from licenca_modulo import LicencaModulo
+from atualizador_modulo import AtualizadorModulo
 
 try:
     from PIL import Image, ImageTk
@@ -49,7 +44,7 @@ ctk.set_default_color_theme("blue")
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v8.0")
+        self.root.title("Automação Abentroth v8.2")
         largura_janela = 1100
         altura_janela = 900
 
@@ -82,6 +77,15 @@ class SistemaUnificadoGUI:
         self.container.pack(fill="both", expand=True, padx=10, pady=10)
 
         # Inicialização dos Módulos
+        self.licenca = LicencaModulo(self)
+        self.atualizador = AtualizadorModulo(self)
+
+        if not self.licenca.verificar_e_autenticar():
+            self.root.destroy()
+            return
+
+        self.atualizador.verificar_atualizacao()
+
         self.contabil = ContabilModulo(self)
         self.fiscal = FiscalModulo(self)
         self.nfse = PortalNacionalModulo(self)
@@ -93,6 +97,9 @@ class SistemaUnificadoGUI:
         self.betha_manual = EmissorBethaManual(self)
 
         self.mostrar_menu_inicial()
+
+    def resource_path(self, relative_path):
+        return resource_path(relative_path)
 
     def carregar_imagem_ajustada(self, path_imagem, max_size=(300, 180)):
         if not TEM_PILLOW: return None
@@ -114,7 +121,8 @@ class SistemaUnificadoGUI:
             "caminho_banco": os.path.join(self.pasta_exe, "dados_escritorio.db"),
             "chrome_path": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             "velocidade": "1",
-            "licenca": ""
+            "licenca": "",
+            "pasta_pdfs": os.path.join(self.pasta_exe, "NFSe_PDFs")
         }
         if os.path.exists(self.caminho_config):
             try:
@@ -134,114 +142,93 @@ class SistemaUnificadoGUI:
             pass
 
     def licenca_valida(self):
-        chave = self.configuracoes.get("licenca", "")
-        if not chave: return False
-        try:
-            texto_decodificado = base64.b64decode(chave.encode('utf-8')).decode('utf-8')
-            partes = texto_decodificado.split('|')
-            if len(partes) == 3 and partes[0] == "ABENTROTH":
-                data_str = partes[1]
-                assinatura_recebida = partes[2]
-                texto_base = f"ABENTROTH|{data_str}"
-                assinatura_calculada = hmac.new(CHAVE_SECRETA, texto_base.encode('utf-8'), hashlib.sha256).hexdigest()[
-                    :16]
-                if assinatura_recebida == assinatura_calculada:
-                    data_validade = datetime.strptime(data_str, "%Y-%m-%d")
-                    hoje = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                    if hoje <= data_validade: return True
-        except:
-            return False
-        return False
+        return self.licenca.licenca_valida()
 
     def obter_data_validade(self):
-        """Decodifica a licença ativa e extrai a data formatada em padrão nacional."""
-        chave = self.configuracoes.get("licenca", "")
-        if not chave: return None
-        try:
-            texto_decodificado = base64.b64decode(chave.encode('utf-8')).decode('utf-8')
-            partes = texto_decodificado.split('|')
-            if len(partes) == 3 and partes[0] == "ABENTROTH":
-                dt = datetime.strptime(partes[1], "%Y-%m-%d")
-                return dt.strftime("%d/%m/%Y")
-        except:
-            pass
-        return None
+        return self.licenca.obter_data_validade()
 
     def verificar_acesso_modulo(self, comando_modulo):
         if self.licenca_valida():
             comando_modulo()
         else:
-            self.mostrar_aviso_bloqueio()
-
-    def mostrar_aviso_bloqueio(self):
-        aviso = ctk.CTkToplevel(self.root)
-        aviso.title("Acesso Bloqueado")
-        aviso.geometry("400x180")
-        try:
-            aviso.after(200, lambda: aviso.iconbitmap(resource_path("ico.ico")))
-        except:
-            pass
-        aviso.transient(self.root);
-        aviso.grab_set()
-        f_msg = ctk.CTkFrame(aviso, fg_color="transparent")
-        f_msg.pack(pady=20)
-        ctk.CTkLabel(f_msg, text="❌ Licença expirada ou não cadastrada.", font=("Arial", 14, "bold"),
-                     text_color="#d32f2f").pack()
-        f_btns = ctk.CTkFrame(aviso, fg_color="transparent")
-        f_btns.pack(pady=10)
-        ctk.CTkButton(f_btns, text="Fechar", command=aviso.destroy, width=100, fg_color="gray").pack(side=tk.LEFT,
-                                                                                                     padx=10)
-        ctk.CTkButton(f_btns, text="Alterar Chave", command=lambda: [aviso.destroy(), self.abrir_tela_licenca()],
-                      width=120).pack(side=tk.LEFT, padx=10)
+            messagebox.showerror("Acesso Negado", "Licença expirada ou inválida.")
 
     def abrir_tela_licenca(self):
         janela = ctk.CTkToplevel(self.root)
-        janela.title("Gerenciador de Licença")
-        janela.geometry("450x350")
-        try:
-            janela.after(200, lambda: janela.iconbitmap(resource_path("ico.ico")))
-        except:
-            pass
-        janela.transient(self.root);
+        janela.title("Licença")
+        janela.geometry("400x250")
+        janela.resizable(False, False)
+        janela.transient(self.root)
         janela.grab_set()
 
-        f_status = ctk.CTkFrame(janela, fg_color="transparent")
-        f_status.pack(pady=20)
+        x = (janela.winfo_screenwidth() // 2) - 200
+        y = (janela.winfo_screenheight() // 2) - 125
+        janela.geometry(f"400x250+{x}+{y}")
 
-        if self.licenca_valida():
-            v_data = self.obter_data_validade()
-            txt_status = f"✅ Status: ATIVA\n📅 Válida até: {v_data}" if v_data else "✅ Status: ATIVA"
-            ctk.CTkLabel(f_status, text=txt_status, font=("Arial", 16, "bold"), text_color="#228B22",
-                         justify="center").pack()
-        else:
-            ctk.CTkLabel(f_status, text="❌ Status: EXPIRADA / INVÁLIDA", font=("Arial", 16, "bold"),
-                         text_color="#d32f2f").pack()
+        # Status atual
+        validade_str = self.licenca.obter_data_validade() or "—"
+        login_str = self.licenca.obter_login() or "—"
 
-        f_input = ctk.CTkFrame(janela, fg_color="transparent")
-        f_input.pack(pady=10)
-        var_chave = tk.StringVar()
-        ent_chave = ctk.CTkEntry(f_input, textvariable=var_chave, width=350, justify="center")
-        ent_chave.pack(pady=10)
+        ctk.CTkLabel(janela, text="🔑 Licença Ativa",
+                     font=("Arial", 16, "bold"), text_color="#228B22").pack(pady=15)
 
-        def salvar():
-            self.salvar_config("licenca", var_chave.get().strip())
-            if self.licenca_valida():
-                messagebox.showinfo("Sucesso", "Ativada!")
-                janela.destroy()
-                self.mostrar_menu_inicial()
+        ctk.CTkLabel(janela, text=f"Usuário: {login_str}",
+                     font=("Arial", 12)).pack()
+
+        lbl_validade = ctk.CTkLabel(janela, text=f"Válida até: {validade_str}",
+                                    font=("Arial", 12))
+        lbl_validade.pack(pady=5)
+
+        lbl_status = ctk.CTkLabel(janela, text="", font=("Arial", 11),
+                                  text_color="#228B22")
+        lbl_status.pack(pady=5)
+
+        def atualizar_licenca():
+            btn_atualizar.configure(state="disabled", text="Consultando...")
+            lbl_status.configure(text="", text_color="#228B22")
+            janela.update()
+
+            login = self.licenca.obter_login()
+            validade, erro = self.licenca._validar_online(login, self.licenca._obter_senha_cache())
+
+            if erro:
+                lbl_status.configure(text=f"❌ {erro}", text_color="#d32f2f")
             else:
-                messagebox.showerror("Erro", "Chave Inválida.")
+                self.licenca._validade_atual = validade
+                self.licenca._salvar_cache(login, validade)
+                nova_data = validade.strftime("%d/%m/%Y")
+                lbl_validade.configure(text=f"Válida até: {nova_data}")
+                lbl_status.configure(text="✅ Licença atualizada com sucesso!")
 
-        ctk.CTkButton(f_input, text="Ativar Licença", command=salvar, fg_color="#228B22", width=180, height=40).pack(
-            pady=10)
+            btn_atualizar.configure(state="normal", text="🔄 Atualizar Licença")
+
+        f_btns = ctk.CTkFrame(janela, fg_color="transparent")
+        f_btns.pack(pady=15)
+
+        btn_atualizar = ctk.CTkButton(
+            f_btns, text="🔄 Atualizar Licença",
+            width=180, height=40, fg_color="#1f538d", hover_color="#14375e",
+            command=atualizar_licenca
+        )
+        btn_atualizar.pack(side="left", padx=10)
+
+        ctk.CTkButton(
+            f_btns, text="Sair / Trocar Usuário",
+            width=160, height=40, fg_color="#c0392b", hover_color="#962d22",
+            command=lambda: [janela.destroy(), self.licenca.logout(), self.root.destroy()]
+        ).pack(side="left", padx=10)
+
+        ctk.CTkButton(janela, text="Fechar", width=100, height=35,
+                      fg_color="gray", command=janela.destroy).pack()
 
     def mostrar_info_sistema(self):
         janela = ctk.CTkToplevel(self.root)
         janela.title("Sobre")
         janela.geometry("450x300")
-        info_texto = "Autor: Guilherme Abentroth\nVersão: 8.0\nData: 22/05/2026\n\n"
-        "1. Envio de e-mail Tomador\n"
-        "2. Ajuste Tomador CPF"
+        info_texto = "Autor: Guilherme Abentroth\nVersão: 8.2\nData: 24/05/2026\n\n" \
+                     "1. Download automático de NFSE emitidas\n" \
+                     "2. Controle de Licenca Digital\n" \
+                     "3. Alterção dos Nomes dos Arquivos e Pastas"
 
         f_info = ctk.CTkFrame(janela, fg_color="transparent")
         f_info.pack(pady=20, padx=20, fill="both", expand=True)
@@ -262,7 +249,7 @@ class SistemaUnificadoGUI:
             janela.after(200, lambda: janela.iconbitmap(resource_path("ico.ico")))
         except:
             pass
-        janela.transient(self.root);
+        janela.transient(self.root)
         janela.grab_set()
 
         f_main = ctk.CTkFrame(janela)
@@ -302,6 +289,7 @@ class SistemaUnificadoGUI:
         criar_linha("Pasta JPype:", "pasta_jpype")
         criar_linha("Pasta Playwright:", "pasta_playwright")
         criar_linha("Chrome Path:", "chrome_path")
+        criar_linha("Pasta PDFs NFS-e:", "pasta_pdfs")
         criar_vel()
 
     def log_msg(self, message, tipo="info", divisor=False):
@@ -366,7 +354,7 @@ class SistemaUnificadoGUI:
         f_b = ctk.CTkFrame(self.container, fg_color="transparent")
         f_b.pack(pady=50)
 
-        btn_w = 220;
+        btn_w = 220
         btn_h = 80
 
         btn_fiscal = ctk.CTkButton(
@@ -463,7 +451,6 @@ class SistemaUnificadoGUI:
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
         f_btns.pack(pady=40)
 
-        # FIX CORRIGIDO: Modificado de fields_color para fg_color
         ctk.CTkButton(f_btns, text="📊 EMISSÃO EM LOTE (EXCEL)",
                       command=self.betha_cert.tela_emissor_certificado,
                       width=400, height=80, font=("Arial", 18, "bold"),
@@ -575,7 +562,7 @@ class SistemaUnificadoGUI:
         f_imgs = ctk.CTkFrame(self.container, fg_color="transparent")
         f_imgs.pack(pady=10)
 
-        col = 0;
+        col = 0
         row = 0
         self._img_refs = []
 
@@ -598,7 +585,7 @@ class SistemaUnificadoGUI:
 
             col += 1
             if col > 1:
-                col = 0;
+                col = 0
                 row += 1
 
         f_log = ctk.CTkFrame(self.container)
@@ -665,8 +652,8 @@ class SistemaUnificadoGUI:
         f_b = ctk.CTkFrame(self.container, fg_color="transparent")
         f_b.pack(pady=20)
 
-        btn_w = 140;
-        btn_h = 40;
+        btn_w = 140
+        btn_h = 40
         f_font = ("Arial", 12, "bold")
 
         f_b1 = ctk.CTkFrame(f_b, fg_color="transparent")

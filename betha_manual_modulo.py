@@ -11,6 +11,7 @@ from lxml import etree
 from signxml import XMLSigner
 from certificado_utils import CertificadoA1
 from betha_database import BethaDatabase
+from monitor_notas import MonitorNotas, TelaMonitor
 
 # Silencia avisos técnicos do certificado
 warnings.filterwarnings("ignore", category=UserWarning, message=".*PKCS#12 bundle could not be parsed.*")
@@ -29,6 +30,23 @@ class EmissorBethaManual:
         self.mapa_tomadores = {}
         # Cache da alíquota padrão do prestador (lida do cadastro)
         self.aliquota_padrao_prestador = ""
+        self.prestador_nome_atual = ""
+
+        # -------------------------------------------------------
+        # Monitor de notas: acompanha protocolos pendentes e
+        # baixa os PDFs automaticamente quando a prefeitura
+        # conclui o processamento assíncrono.
+        # -------------------------------------------------------
+        pasta_pdfs = self.parent.configuracoes.get(
+            "pasta_pdfs",
+            os.path.join(self.parent.pasta_exe, "NFSe_PDFs")
+        )
+        self.monitor = MonitorNotas(
+            db_path=self.db_path,
+            pasta_pdfs=pasta_pdfs,
+            log_fn=self.parent.log_msg
+        )
+        self.tela_monitor = TelaMonitor(self.parent, self.monitor)
 
     def tela_emissor_manual(self):
         self.parent.limpar_tela()
@@ -133,14 +151,13 @@ class EmissorBethaManual:
         self.combo_iss_nota.pack(side="left", padx=5)
         self.combo_iss_nota.set("2 - Não")
 
-        # Campo de alíquota do ISS — SEMPRE preenchido com a alíquota do
-        # cadastro do prestador. Editável apenas quando ISS Retido = Sim.
+        # Campo de alíquota do ISS — sempre editável, pré-preenchido com
+        # a alíquota do cadastro do prestador.
         ctk.CTkLabel(f_valor, text="Alíq. ISS (%):", font=("Arial", 11, "bold"), width=80, anchor="e").pack(
             side="left", padx=(10, 5))
         self.ent_aliq_iss = ctk.CTkEntry(f_valor, placeholder_text="Ex: 2.00", width=80,
                                          font=("Arial", 12), height=26)
         self.ent_aliq_iss.pack(side="left", padx=5)
-        self.ent_aliq_iss.configure(state="disabled")
 
         # Inserção manual de INSS (Contribuição Previdenciária)
         ctk.CTkLabel(f_valor, text="INSS (CP) (R$):", font=("Arial", 11, "bold"), width=90, anchor="e").pack(
@@ -172,6 +189,12 @@ class EmissorBethaManual:
 
         ctk.CTkButton(f_btns, text="🚀 EMITIR NFSE MANUAL", command=self.fluxo_emissao_manual, width=250, height=45,
                       font=("Arial", 14, "bold"), fg_color="#27ae60", hover_color="#218c4e").pack(side="left", padx=10)
+
+        # Botão de acompanhamento de notas
+        ctk.CTkButton(f_btns, text="📋 Acompanhar Notas", command=self.tela_monitor.abrir,
+                      width=180, height=45, fg_color="#1f538d",
+                      hover_color="#14375e").pack(side="left", padx=10)
+
         ctk.CTkButton(f_btns, text="Voltar ao Menu", width=140, height=45, fg_color="gray",
                       command=self.parent.mostrar_menu_inicial).pack(side="left")
 
@@ -182,13 +205,9 @@ class EmissorBethaManual:
     # ------------------------------------------------------------------
     # Heurística defensiva para ler a alíquota padrão do cadastro do
     # prestador, sem depender do índice exato do schema do banco.
-    # Varre o tuple buscando o primeiro valor que pareça uma alíquota
-    # razoável de ISS (0 < x <= 10). Os índices candidatos cobrem as
-    # posições mais comuns; se nenhum acertar, faz scan geral.
     # ------------------------------------------------------------------
     def _ler_aliquota_padrao_do_banco(self, dados_p):
         candidatos_prioritarios = (9, 10, 7, 6, 12, 13)
-        # Tenta primeiro os índices mais prováveis
         for idx in candidatos_prioritarios:
             try:
                 v = dados_p[idx]
@@ -198,11 +217,10 @@ class EmissorBethaManual:
                 if not s or s in ('0', '0.0', '0.00'):
                     continue
                 f = float(s)
-                if 0 < f <= 10:  # alíquota ISS típica
+                if 0 < f <= 10:
                     return f"{f:.2f}"
             except (IndexError, ValueError, AttributeError, TypeError):
                 continue
-        # Fallback: scan geral
         for idx in range(len(dados_p)):
             if idx in candidatos_prioritarios:
                 continue
@@ -221,15 +239,9 @@ class EmissorBethaManual:
         return ""
 
     # ------------------------------------------------------------------
-    # Comportamento do campo de alíquota:
-    # - "1 - Sim" (retido): campo habilitado, vem preenchido com a
-    #   alíquota do cadastro mas o usuário pode editar para outro valor
-    # - "2 - Não" (não retido): campo desabilitado, exibindo a alíquota
-    #   do cadastro (uso informativo, já vai assim para o XML)
+    # Campo de alíquota: sempre editável, pré-preenchido com o cadastro
     # ------------------------------------------------------------------
     def _toggle_aliq_iss(self, valor):
-        # Campo sempre editável (com ou sem retenção).
-        # A alíquota deve ser informada pelo usuário em todos os casos.
         self.ent_aliq_iss.configure(state="normal")
         self.ent_aliq_iss.delete(0, tk.END)
         if self.aliquota_padrao_prestador:
@@ -250,13 +262,10 @@ class EmissorBethaManual:
                 dados_p = self.db.buscar_dados_prestador(p[1])
                 self.prestador_id_atual = dados_p[0]
                 self.prestador_cnpj_atual = str(dados_p[1]).strip()
+                self.prestador_nome_atual = nome_escolhido
 
-                # Lê a alíquota padrão do cadastro do prestador.
-                # Será usada como alíquota efetiva na nota (com ou sem retenção).
                 self.aliquota_padrao_prestador = self._ler_aliquota_padrao_do_banco(dados_p)
 
-                # SEMPRE inicia com ISS Retido = Não (independente do cadastro).
-                # A retenção é decidida no momento da emissão, não no cadastro.
                 self.combo_iss_nota.set("2 - Não")
                 self._toggle_aliq_iss("2 - Não")
                 break
@@ -264,8 +273,7 @@ class EmissorBethaManual:
         self.atualizar_combo_tomadores()
         self.parent.log_msg(f"Empresa emissora selecionada: {nome_escolhido}", "info")
         if self.aliquota_padrao_prestador:
-            self.parent.log_msg(
-                f"Alíquota do cadastro: {self.aliquota_padrao_prestador}%", "info")
+            self.parent.log_msg(f"Alíquota do cadastro: {self.aliquota_padrao_prestador}%", "info")
         else:
             self.parent.log_msg(
                 "Aviso: alíquota não encontrada no cadastro. Preencha manualmente antes de emitir.", "erro")
@@ -350,30 +358,15 @@ class EmissorBethaManual:
             self.parent.log_msg(f"Base de Dados: Cliente '{t_dados['razao_social']}' verificado/salvo com sucesso.",
                                 "sucesso")
 
-            # --- PROCESSAMENTO DOS VALORES FINANCEIROS ---
             valor_formatado = f"{float(str(self.ent_v_servico.get()).replace(',', '.')):.2f}"
             descricao_nota = self.txt_desc.get("1.0", tk.END).strip().upper()
 
-            # Captura a opção de ISS retido ("1" = Sim, "2" = Não)
             iss_nota_override = self.combo_iss_nota.get().split(" - ")[0]
             reg_ap_trib_sn = "2" if iss_nota_override == "1" else "1"
             iss_eh_retido = (iss_nota_override == "1")
 
-            # ---------------------------------------------------------------
-            # FIX: a alíquota é OBRIGATÓRIA sempre (com ou sem retenção).
-            # A Betha rejeita a DPS sem <pAliq> quando a operação é
-            # tributável e não há regime especial.
-            # ---------------------------------------------------------------
-            # Lê o valor atual do campo (habilitado ou não, contém algo)
-            estado_atual = self.ent_aliq_iss.cget("state")
-            if estado_atual == "disabled":
-                # Re-habilita temporariamente para ler o valor
-                self.ent_aliq_iss.configure(state="normal")
-                v_aliq_raw = self.ent_aliq_iss.get().replace(',', '.').strip()
-                self.ent_aliq_iss.configure(state="disabled")
-            else:
-                v_aliq_raw = self.ent_aliq_iss.get().replace(',', '.').strip()
-
+            # Alíquota — obrigatória sempre
+            v_aliq_raw = self.ent_aliq_iss.get().replace(',', '.').strip()
             if not v_aliq_raw:
                 self.parent.log_msg(
                     "Erro: Alíquota do ISS é obrigatória. Preencha o cadastro do prestador "
@@ -382,15 +375,12 @@ class EmissorBethaManual:
             try:
                 aliq_iss_formatada = f"{float(v_aliq_raw):.2f}"
                 if float(aliq_iss_formatada) <= 0:
-                    self.parent.log_msg(
-                        "Erro: Alíquota do ISS deve ser maior que zero.", "erro")
+                    self.parent.log_msg("Erro: Alíquota do ISS deve ser maior que zero.", "erro")
                     return
             except ValueError:
-                self.parent.log_msg(
-                    "Erro: Alíquota do ISS inválida. Use formato numérico (Ex: 2.00).", "erro")
+                self.parent.log_msg("Erro: Alíquota do ISS inválida. Use formato numérico (Ex: 2.00).", "erro")
                 return
 
-            # Formatação segura do INSS (CP)
             v_inss_raw = self.ent_v_inss.get().replace(',', '.').strip()
             if not v_inss_raw:
                 v_inss_raw = "0"
@@ -415,22 +405,17 @@ class EmissorBethaManual:
 
         # Consulta o código IBGE do município do tomador via ViaCEP
         cep_limpo = tomador["cep"].replace("-", "").strip()
-        cmun_tomador = "0000000"  # fallback neutro
+        cmun_tomador = "0000000"
         try:
-            resp_cep = requests.get(
-                f"https://viacep.com.br/ws/{cep_limpo}/json/",
-                timeout=5
-            )
+            resp_cep = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/", timeout=5)
             if resp_cep.status_code == 200:
                 dados_cep = resp_cep.json()
                 cmun_tomador = dados_cep.get("ibge", "0000000")
                 self.parent.log_msg(
-                    f"Município do tomador: {dados_cep.get('localidade', '?')} "
-                    f"- IBGE: {cmun_tomador}", "info")
+                    f"Município do tomador: {dados_cep.get('localidade', '?')} - IBGE: {cmun_tomador}", "info")
         except Exception:
-            self.parent.log_msg(
-                "Aviso: não foi possível consultar o CEP do tomador. "
-                "Usando código IBGE genérico.", "erro")
+            self.parent.log_msg("Aviso: não foi possível consultar o CEP do tomador. Usando código IBGE genérico.",
+                                "erro")
 
         url_ws = "https://nota-eletronica.betha.cloud/dps/ws"
         tp_amb = "1"
@@ -495,8 +480,22 @@ class EmissorBethaManual:
             if resp.status_code == 200:
                 prot_match = re.search(r'protocolo>(.*?)</', resp.text, re.IGNORECASE)
                 if prot_match:
+                    protocolo = prot_match.group(1).strip()
                     self.parent.log_msg(
-                        f"SUCESSO! Lote recebido pela prefeitura. Protocolo: {prot_match.group(1)}", "sucesso")
+                        f"SUCESSO! Lote recebido pela prefeitura. Protocolo: {protocolo}", "sucesso")
+
+                    # -------------------------------------------------------
+                    # Registra no monitor para acompanhamento assíncrono.
+                    # A thread de polling vai consultar o status a cada 15s
+                    # e baixar o PDF quando a prefeitura processar a nota.
+                    # -------------------------------------------------------
+                    nome_prestador = self.prestador_nome_atual or cnpj_prestador
+                    self.monitor.registrar_pendente(
+                        protocolo=protocolo,
+                        cnpj_prestador=cnpj_prestador,
+                        nome_tomador=tomador["razao_social"],
+                        nome_prestador=nome_prestador
+                    )
                 else:
                     msg_match = re.search(r'mensagem>(.*?)</', resp.text, re.IGNORECASE)
                     self.parent.log_msg(
@@ -509,29 +508,11 @@ class EmissorBethaManual:
             self.parent.log_msg(f"Erro Crítico de transmissão SOAP: {e}", "erro")
 
     def _gerar_xml_dps_corpo(self, d, tp_amb):
-        # -------------------------------------------------------
-        # Regras do bloco de Tributação Municipal (TTributacaoMunicipal):
-        #
-        # - <tribISSQN>1</tribISSQN> : operação tributável (obrigatório)
-        # - <pAliq>X.XX</pAliq>      : SEMPRE PRESENTE quando tribISSQN=1
-        #                              e regEspTrib=0 (a Betha rejeita
-        #                              a DPS sem este campo)
-        # - <tpRetISSQN>X</tpRetISSQN>:
-        #       1 = ISS NÃO retido (Prestador recolhe)
-        #       2 = ISS RETIDO (Tomador retém)
-        #
-        # Bloco INSS (CP):
-        # - <tribFed><vRetCP>X.XX</vRetCP></tribFed>
-        #   sem wrapper <retCP>, conforme XSD oficial
-        # -------------------------------------------------------
-
-        # Bloco INSS condicional (só quando vRetCP > 0)
         bloco_inss = (
             f"<tribFed><vRetCP>{d['inss']}</vRetCP></tribFed>"
             if float(d['inss']) > 0 else ""
         )
 
-        # tpRetISSQN: 2 = retido (Tomador), 1 = não retido (Prestador)
         valor_tp_ret_issqn = "2" if d['iss_eh_retido'] else "1"
 
         doc_tomador = (
