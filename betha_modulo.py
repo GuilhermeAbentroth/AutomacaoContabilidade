@@ -483,6 +483,7 @@ class EmissorBethaModulo:
 
                     self.parent.log_msg("Aguardando processamento da emissão...")
                     time.sleep(7)
+                    self.parent.estatisticas.registrar_evento("nota_emitida")
 
                     self.parent.log_msg("Limpando possíveis modais de sucesso...")
                     nova_aba.keyboard.press("Escape")

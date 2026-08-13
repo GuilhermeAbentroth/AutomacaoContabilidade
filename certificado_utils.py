@@ -1,6 +1,8 @@
 import os
+import re
 from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.hazmat.primitives import serialization
+from cryptography.x509.oid import NameOID
 
 
 class CertificadoA1:
@@ -9,6 +11,8 @@ class CertificadoA1:
         self.senha = senha.encode('utf-8') if isinstance(senha, str) else senha
         self.chave_privada = None
         self.certificado_publico = None
+        self.cnpj = None
+        self.nome_razao_social = None
 
     def carregar_chaves(self, log_func=None):
         """
@@ -30,9 +34,16 @@ class CertificadoA1:
             self.chave_privada = private_key
             self.certificado_publico = certificate
 
+            # Certificados e-CNPJ ICP-Brasil trazem o CNPJ embutido no CN: "RAZAO SOCIAL:14DIGITOS"
+            cn_attrs = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+            if cn_attrs:
+                cn_valor = cn_attrs[0].value
+                m = re.search(r':(\d{14})\b', cn_valor)
+                if m:
+                    self.cnpj = m.group(1)
+                    self.nome_razao_social = cn_valor[:m.start()].strip()
+
             if log_func:
-                # Vamos tentar extrair o nome da empresa de dentro do certificado para ter a certeza que abriu bem!
-                assunto = certificate.subject.rfc4514_string()
                 log_func(f"Cofre aberto com sucesso! Certificado carregado.", "sucesso")
 
             return True
@@ -63,3 +74,11 @@ class CertificadoA1:
         return self.certificado_publico.public_bytes(
             encoding=serialization.Encoding.PEM
         )
+
+    def obter_cnpj(self):
+        """Retorna o CNPJ extraído do certificado (ou None se não encontrado/e-CPF)"""
+        return self.cnpj
+
+    def obter_nome_razao_social(self):
+        """Retorna a razão social extraída do CN do certificado (ou None se não encontrada)"""
+        return self.nome_razao_social

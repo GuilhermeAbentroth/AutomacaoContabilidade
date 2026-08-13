@@ -1,0 +1,99 @@
+<DPS xmlns="http://www.betha.com.br/e-nota-dps" versao="1.01">
+            <infDPS id="DPS420890623751334600010100900001786060248947">
+                <tpAmb>1</tpAmb>
+                <dhEmi>2026-08-06T20:45:48</dhEmi>
+                <verAplic>Abentroth_v6.9</verAplic>
+                <serie>900</serie>
+                <nDPS>1786060248947</nDPS>
+                <dCompet>2026-08-06</dCompet>
+                <tpEmit>1</tpEmit>
+                <cLocEmi>4208906</cLocEmi>
+                <prest>
+                    <CNPJ>37513346000101</CNPJ>
+                    <IM>46020</IM>
+                    <regTrib>
+                        <opSimpNac>3</opSimpNac>
+                        <regApTribSN>1</regApTribSN>
+                        <regEspTrib>0</regEspTrib>
+                    </regTrib>
+                </prest>
+                <toma>
+                    <CNPJ>19664244000105</CNPJ>
+                    <xNome>PRATICA CONTABILIDADE LTDA</xNome>
+                    <end>
+                        <endNac><cMun>4208906</cMun><CEP>89255000</CEP></endNac>
+                        <xLgr>R JORGE CZERNIEWICZ</xLgr>
+                        <nro>590</nro>
+                        <xBairro>CZERNIEWICZ</xBairro>
+                    </end>
+                    <email>contabil@praticacontabilidade.com</email>
+                </toma>
+                <serv>
+                    <locPrest><cLocPrestacao>4208906</cLocPrestacao></locPrest>
+                    <cServ>
+                        <cTribNac>170201</cTribNac>
+                        <xDescServ>TESTE</xDescServ>
+                        <cNBS>101011200</cNBS>
+                    </cServ>
+                    
+                </serv>
+                <valores>
+                    <vServPrest><vServ>0.01</vServ></vServPrest>
+                    <trib>
+                        <tribMun>
+                            <tribISSQN>1</tribISSQN>
+                            <pAliq>2.00</pAliq>
+                            <tpRetISSQN>1</tpRetISSQN>
+                        </tribMun>
+                        
+                        <totTrib>
+                            <pTotTrib>
+                                <pTotTribFed>0.00</pTotTribFed>
+                                <pTotTribEst>0.00</pTotTribEst>
+                                <pTotTribMun>0.00</pTotTribMun>
+                            </pTotTrib>
+                        </totTrib>
+                    </trib>
+                </valores>
+            </infDPS>
+        <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/><ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>VwYNusVkaAjb7apfPPkqHfidlWj0p3GP0gCJgc9jz0g=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue>eC3bcenGBv/EZ2ku/4PXUaPkIWoaEZN+6f29YgiPFxevNJDGNAWVDUEBibctZIAcH2ePOnMGhQWf6yEPyKC/kKUg4el5tQ1SayARPlTQ+5A4I2zjLey98qo4Sjs6cMNwabvBHhtqG11mU/Xg4umCMjgi4+Kte0ca02r9MasTM/ZDgXSj36r5iNr123R8I8cA0X7PmtAXT8gkKoQ+4S3u0b5gaK3Sw9Fia/lmQ4AQGvPrrZYDVK4eqPjf24slU3RbtrbwLpE1aW5EE5bAVttXNMLI5cFWrW9yUs18oDMi626VAK8j9FkEjyrnQe4aIIMQK0DxOF1i+oMOkxQeLmB/aw==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIHdzCCBV+gAwIBAgIIEd4lESU7SSwwDQYJKoZIhvcNAQELBQAwXzELMAkGA1UE
+BhMCQlIxEzARBgNVBAoTCklDUC1CcmFzaWwxGDAWBgNVBAsTD0FDIFNPTFVUSSB2
+NSBHMjEhMB8GA1UEAxMYQUMgU09MVVRJIE11bHRpcGxhIHY1IEcyMB4XDTI1MTEy
+NTEyNDgwMFoXDTI2MTEyNTEyNDgwMFowgfgxCzAJBgNVBAYTAkJSMRMwEQYDVQQK
+EwpJQ1AtQnJhc2lsMQswCQYDVQQIEwJTQzEXMBUGA1UEBxMOSmFyYWd1YSBkbyBT
+dWwxITAfBgNVBAsTGEFDIFNPTFVUSSBNdWx0aXBsYSB2NSBHMjEXMBUGA1UECxMO
+MDk0NjE2NDcwMDAxOTUxHDAaBgNVBAsTE0NlcnRpZmljYWRvIERpZ2l0YWwxGjAY
+BgNVBAsTEUNlcnRpZmljYWRvIFBKIEExMTgwNgYDVQQDEy9QUkFDVElDRVMgR0VT
+VEFPIERFIE5FR09DSU8gTFREQTozNzUxMzM0NjAwMDEwMTCCASIwDQYJKoZIhvcN
+AQEBBQADggEPADCCAQoCggEBAJdWF1Tygs/mKGH9W7EWiJX8J/BdPQG3MU+d59B8
+nlWUak7/N8WYgDhsCPeD6plhxpWLDjY4WDewoLwe64cq1edp2UUH1EEODDnesDkJ
+v2ttkZnGTrVmyAYePOGqvBKqM5SI9tihOXe60WCt1jiHwc5RQZBrjw3iFd6FEVmF
+SUJqIsVKCPlHON9SMvOqAzwp7ny/GIpFO965p6bHspiutnGA5RCiqaT8IdOG9cRw
+5VhcHvRM8YNmP+NPLxyyYzQvNmTOo2YxxsZ2rxa8j+nn3s/0sigo+SmQK2IPsQLL
+iVZQVtAzVMPo1v+oHnSLe1bKCjT3chVsXaYKmCdXDv3lF3cCAwEAAaOCApswggKX
+MAkGA1UdEwQCMAAwHwYDVR0jBBgwFoAUlic4+1Kfoj00013IK/dBrYJesI8wVwYI
+KwYBBQUHAQEESzBJMEcGCCsGAQUFBzAChjtodHRwOi8vY2NkLmFjc29sdXRpLmNv
+bS5ici9sY3IvYWMtc29sdXRpLW11bHRpcGxhLXY1LWcyLnA3YjCBzQYDVR0RBIHF
+MIHCgSBzdXBvcnRlQGdlc3Rhb3ByYXRpY2Fjb250LmNvbS5icqAwBgVgTAEDAqAn
+EyVUQVJKQSBSQU1PTkUgQk9STkhPTERUIEpBR05PVyBaSU5HTEVSoBkGBWBMAQMD
+oBATDjM3NTEzMzQ2MDAwMTAxoDgGBWBMAQMEoC8TLTA5MDYxOTg0MDA4NzU2NTQw
+NDUwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMKAXBgVgTAEDB6AOEwwwMDAwMDAw
+MDAwMDAwXQYDVR0gBFYwVDBSBgZgTAECASYwSDBGBggrBgEFBQcCARY6aHR0cDov
+L2NjZC5hY3NvbHV0aS5jb20uYnIvZG9jcy9kcGMtYWMtc29sdXRpLW11bHRpcGxh
+LnBkZjAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwQwgZIGA1UdHwSBijCB
+hzBBoD+gPYY7aHR0cDovL2NjZC5hY3NvbHV0aS5jb20uYnIvbGNyL2FjLXNvbHV0
+aS1tdWx0aXBsYS12NS1nMi5jcmwwQqBAoD6GPGh0dHA6Ly9jY2QyLmFjc29sdXRp
+LmNvbS5ici9sY3IvYWMtc29sdXRpLW11bHRpcGxhLXY1LWcyLmNybDAdBgNVHQ4E
+FgQUfOgJQjKRCa3vJ1A5q77A0Bt3gt8wDgYDVR0PAQH/BAQDAgXgMA0GCSqGSIb3
+DQEBCwUAA4ICAQAW2/oS7kiez4u7BPJdEWMW0ospmanEyk49U49G1KwfBU+t8iiH
+WWph8FXX5J5xqJUqXm2QqE+68NJ4g9JIBkzTknUhQJGZLREmHkIskiaIdx8z7F8A
+umhwDdXS4v6ozJEjpjtXEgDdeMk4KLw6vUemftKqxN0RjHbZrx6ub38kSM9CJS7o
+l6UlbqreRtn5C/Xd7IuM0P4AWIxIAFkTr1+INwrcHNN8rEK9P3Z1Ke+698k4GrAj
+9bRa50g0hkMtt11P9GNsWVHITWPb+esp/FnZtwAfifXRaAbn5aF83a2eI+UZ3PT0
+Ioh02h2U/ThYOGxxfle57iB7WXT6Eg7otpbui1bSTQaA9MP4cJfbF5oi6cJQKRDI
+3aNjORgQxqDWHbJ4RIJ/x2jHrlTvW+CQ/63877YraDH6V/WApSWnTK6k9EyBZGwJ
+dwC70gD9ZIjQffp06Dca/SXdtpCFa1LVAcsHNujo+FmoQGnyyOHegq5DRiW3lX0B
++ZJCIko8NGICkry8+9V63FPVSq7bCvcZwXaNqQ4XDCARGY43SrfntiUXjsT5H2RW
+07xX4lgZziOJp/N20bOEljnNl23kVwrngoHyHC375PPu2Vm9xjPHYLn7F1RU9Tds
+AzikzYcSRE96TGxLjYMY0OzA4Nh2zq5ZH4xCpXtbgPkj33aZwDrlirdTug==
+</ds:X509Certificate></ds:X509Data></ds:KeyInfo></ds:Signature></DPS>

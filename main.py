@@ -4,6 +4,8 @@ from tkinter import scrolledtext, messagebox, filedialog, simpledialog
 import os
 import sys
 import json
+import traceback
+import threading
 from datetime import datetime
 from fiscal_api_modulo import FiscalAPIModulo
 
@@ -36,6 +38,7 @@ from betha_modulo import EmissorBethaModulo
 from logger_utils import AutomationLogger
 from betha_certificado_modulo import EmissorBethaCertificado
 from betha_manual_modulo import EmissorBethaManual
+from emissor_portal_nacional_modulo import EmissorPortalNacional
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -44,37 +47,43 @@ ctk.set_default_color_theme("blue")
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v8.2")
-        largura_janela = 1100
-        altura_janela = 900
+        self.root.title("Automação Abentroth v10.4  ")
 
-        # Captura a resolução real do monitor do usuário
-        largura_tela = self.root.winfo_screenwidth()
-        altura_tela = self.root.winfo_screenheight()
-
-        # Calcula as coordenadas X e Y para centralizar
-        pos_x = (largura_tela // 2) - (largura_janela // 2)
-        pos_y = (altura_tela // 2) - (altura_janela // 2) - 40  # O -40 compensa a barra de tarefas do Windows
-
-        # Define o tamanho e a posição inicial (+X+Y)
-        self.root.geometry(f"{largura_janela}x{altura_janela}+{pos_x}+{pos_y}")
+        # Define um tamanho mínimo razoável e inicia maximizado, ocupando
+        # toda a tela disponível (notebook 14" ou monitor 24"), evitando
+        # que botões fiquem cortados fora da área visível.
+        self.root.minsize(1000, 650)
         self.root.resizable(True, True)
+        try:
+            self.root.state("zoomed")  # Windows: maximiza respeitando a barra de tarefas
+        except Exception:
+            largura_tela = self.root.winfo_screenwidth()
+            altura_tela = self.root.winfo_screenheight()
+            self.root.geometry(f"{largura_tela}x{altura_tela}+0+0")
 
         if getattr(sys, 'frozen', False):
             self.pasta_exe = os.path.dirname(sys.executable)
         else:
             self.pasta_exe = os.path.dirname(os.path.abspath(__file__))
 
+        self.root.report_callback_exception = self.tratar_erro_callback
+
         self.caminho_config = os.path.join(self.pasta_exe, "config_sistema.json")
         self.configuracoes = self.carregar_todas_configs()
+        tema_salvo = self.configuracoes.get("tema", "System")
+        ctk.set_appearance_mode(tema_salvo)
 
         try:
             self.root.iconbitmap(resource_path("ico.ico"))
         except:
             pass
 
-        self.container = ctk.CTkFrame(self.root, fg_color="transparent")
+        # CTkScrollableFrame em vez de CTkFrame: quando o conteúdo da tela
+        # não cabe na altura disponível (ex.: notebook 14"), aparece uma
+        # barra de rolagem vertical em vez de cortar botões fora da tela.
+        self.container = ctk.CTkScrollableFrame(self.root, fg_color="transparent")
         self.container.pack(fill="both", expand=True, padx=10, pady=10)
+        self._configurar_centralizacao_container()
 
         # Inicialização dos Módulos
         self.licenca = LicencaModulo(self)
@@ -95,8 +104,23 @@ class SistemaUnificadoGUI:
         self.betha = EmissorBethaModulo(self)
         self.betha_cert = EmissorBethaCertificado(self)
         self.betha_manual = EmissorBethaManual(self)
+        self.emissor_pn = EmissorPortalNacional(self)
+
+        from societario_modulo import SocietarioModulo
+        self.societario = SocietarioModulo(self)
+
+        from livro_eletronico_modulo import LivroEletronicoModulo
+        self.livro_eletronico = LivroEletronicoModulo(self)
+
+        from estatisticas_modulo import EstatisticasModulo
+        self.estatisticas = EstatisticasModulo(self)
+
+        from pessoal_modulo import PessoalModulo
+        self.pessoal = PessoalModulo(self)
 
         self.mostrar_menu_inicial()
+
+
 
     def resource_path(self, relative_path):
         return resource_path(relative_path)
@@ -122,7 +146,8 @@ class SistemaUnificadoGUI:
             "chrome_path": r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             "velocidade": "1",
             "licenca": "",
-            "pasta_pdfs": os.path.join(self.pasta_exe, "NFSe_PDFs")
+            "pasta_pdfs": os.path.join(self.pasta_exe, "NFSe_PDFs"),
+            "pasta_reinf": os.path.join(self.pasta_exe, "REINF")
         }
         if os.path.exists(self.caminho_config):
             try:
@@ -152,6 +177,14 @@ class SistemaUnificadoGUI:
             comando_modulo()
         else:
             messagebox.showerror("Acesso Negado", "Licença expirada ou inválida.")
+
+    def _alternar_tema(self):
+        modo_atual = self.configuracoes.get("tema", "System")
+        novo_modo = "Light" if modo_atual == "Dark" else "Dark"
+        ctk.set_appearance_mode(novo_modo)
+        self.salvar_config("tema", novo_modo)
+        # Atualiza o texto do botão
+        self.mostrar_menu_inicial()
 
     def abrir_tela_licenca(self):
         janela = ctk.CTkToplevel(self.root)
@@ -189,13 +222,15 @@ class SistemaUnificadoGUI:
             janela.update()
 
             login = self.licenca.obter_login()
-            validade, erro = self.licenca._validar_online(login, self.licenca._obter_senha_cache())
+
+            senha_cache = self.licenca._obter_senha_cache()
+            validade, erro = self.licenca._validar_online(login, senha_cache)
 
             if erro:
                 lbl_status.configure(text=f"❌ {erro}", text_color="#d32f2f")
             else:
                 self.licenca._validade_atual = validade
-                self.licenca._salvar_cache(login, validade)
+                self.licenca._salvar_cache(login, validade, senha_cache)
                 nova_data = validade.strftime("%d/%m/%Y")
                 lbl_validade.configure(text=f"Válida até: {nova_data}")
                 lbl_status.configure(text="✅ Licença atualizada com sucesso!")
@@ -225,10 +260,9 @@ class SistemaUnificadoGUI:
         janela = ctk.CTkToplevel(self.root)
         janela.title("Sobre")
         janela.geometry("450x300")
-        info_texto = "Autor: Guilherme Abentroth\nVersão: 8.2\nData: 24/05/2026\n\n" \
-                     "1. Download automático de NFSE emitidas\n" \
-                     "2. Controle de Licenca Digital\n" \
-                     "3. Alterção dos Nomes dos Arquivos e Pastas"
+        info_texto = "Autor: Guilherme Abentroth\nVersão: 10.4\nData: 06/08/2026\n\n" \
+                     "1. Alterações em Portal Nacional\n" \
+                     "2. Emissor de Notas Portal Nacional\n" \
 
         f_info = ctk.CTkFrame(janela, fg_color="transparent")
         f_info.pack(pady=20, padx=20, fill="both", expand=True)
@@ -290,7 +324,12 @@ class SistemaUnificadoGUI:
         criar_linha("Pasta Playwright:", "pasta_playwright")
         criar_linha("Chrome Path:", "chrome_path")
         criar_linha("Pasta PDFs NFS-e:", "pasta_pdfs")
+        criar_linha("Pasta Cópias REINF:", "pasta_reinf")
         criar_vel()
+
+        ctk.CTkButton(f_main, text="📊 Ver Estatísticas de Uso",
+                      command=self.estatisticas.abrir_tela_estatisticas,
+                      fg_color="#1f538d", width=220).pack(pady=15)
 
     def log_msg(self, message, tipo="info", divisor=False):
         if hasattr(self, 'txt_log') and self.txt_log.winfo_exists():
@@ -307,6 +346,25 @@ class SistemaUnificadoGUI:
 
     def limpar_tela(self):
         for widget in self.container.winfo_children(): widget.destroy()
+
+    def _configurar_centralizacao_container(self):
+        """A CTkScrollableFrame da lib sempre ancora o conteúdo no topo (anchor='nw'),
+        deixando uma área vazia enorme abaixo em telas com pouco conteúdo quando a
+        janela está maximizada. Aqui recentralizamos verticalmente quando o conteúdo
+        é menor que a área visível, e mantemos o comportamento normal de rolagem
+        (ancorado no topo) quando o conteúdo é maior do que a área visível."""
+        canvas = self.container._parent_canvas
+
+        def _centralizar(event=None):
+            canvas.update_idletasks()
+            canvas_h = canvas.winfo_height()
+            content_h = self.container.winfo_reqheight()
+            y = max(0, (canvas_h - content_h) // 2)
+            canvas.coords(self.container._create_window_id, 0, y)
+            canvas.configure(scrollregion=(0, 0, canvas.winfo_width(), max(canvas_h, content_h + y)))
+
+        self.container.bind("<Configure>", lambda e: self.root.after_idle(_centralizar), add="+")
+        canvas.bind("<Configure>", lambda e: self.root.after_idle(_centralizar), add="+")
 
     def carregar_logo(self, parent):
         path_logo = resource_path("logo.png")
@@ -346,6 +404,10 @@ class SistemaUnificadoGUI:
             side="right", padx=5)
         ctk.CTkButton(f_top, text="ℹ️ Info", command=self.mostrar_info_sistema, width=80, fg_color="transparent").pack(
             side="right", padx=5)
+        modo_atual = self.configuracoes.get("tema", "System")
+        texto_tema = "☀️ Claro" if modo_atual == "Dark" else "🌙 Escuro"
+        ctk.CTkButton(f_top, text=texto_tema, width=90, fg_color="transparent",
+                      command=self._alternar_tema).pack(side="right", padx=5)
 
         f_l = ctk.CTkFrame(self.container, fg_color="transparent")
         f_l.pack(pady=40)
@@ -397,7 +459,7 @@ class SistemaUnificadoGUI:
         btn_portal = ctk.CTkButton(
             f_b,
             text="PORTAL NACIONAL",
-            command=lambda: self.verificar_acesso_modulo(self.nfse.tela_nfse),
+            command=lambda: self.verificar_acesso_modulo(self.nfse.nfse_api.tela_api),
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
@@ -415,21 +477,69 @@ class SistemaUnificadoGUI:
 
         btn_emissor = ctk.CTkButton(
             f_b,
-            text="EMISSOR NFSE (CERTIFICADO A1)",
+            text="EMISSOR NFSE",
             command=lambda: self.verificar_acesso_modulo(self.tela_escolha_emissor),
-            width=400,
-            height=60,
+            width=btn_w,
+            height=btn_h,
             font=("Arial", 16, "bold"),
             fg_color="#27ae60",
             hover_color="#27ae60",  # Trava o fundo verde original do emissor
             border_width=2,
             border_color="#27ae60"  # Borda invisível inicial para manter estabilidade
         )
-        btn_emissor.grid(row=1, column=0, columnspan=3, pady=(10, 20))
+        btn_emissor.grid(row=1, column=0, padx=20, pady=20)
 
         # Eventos de Hover do Emissor NFSE
         btn_emissor.bind("<Enter>", lambda e: btn_emissor.configure(border_color=("black", "white")))
         btn_emissor.bind("<Leave>", lambda e: btn_emissor.configure(border_color="#27ae60"))
+
+        btn_soc = ctk.CTkButton(
+            f_b, text="🏢 SOCIETÁRIO",
+            command=self.societario.tela_societario,
+            width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
+            fg_color="#8e44ad", hover_color="#6c3483",
+            border_width=2, border_color="#8e44ad"
+        )
+        btn_soc.grid(row=1, column=1, padx=20, pady=20)
+        btn_soc.bind("<Enter>", lambda e: btn_soc.configure(border_color=("black", "white")))
+        btn_soc.bind("<Leave>", lambda e: btn_soc.configure(border_color="#8e44ad"))
+
+        btn_livro = ctk.CTkButton(
+            f_b, text="📕 LIVRO ELETRÔNICO",
+            command=self.livro_eletronico.tela_livro,
+            width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
+            fg_color="#6c3483", hover_color="#512e5f",
+            border_width=2, border_color="#6c3483"
+        )
+        btn_livro.grid(row=1, column=2, padx=20, pady=20)
+        btn_livro.bind("<Enter>", lambda e: btn_livro.configure(border_color=("black", "white")))
+        btn_livro.bind("<Leave>", lambda e: btn_livro.configure(border_color="#6c3483"))
+
+        btn_pessoal = ctk.CTkButton(
+            f_b, text="👥 PESSOAL",
+            command=self.pessoal.abrir,
+            width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
+            fg_color="#16a085", hover_color="#12876f",
+            border_width=2, border_color="#16a085"
+        )
+        btn_pessoal.grid(row=2, column=0, padx=20, pady=20)
+        btn_pessoal.bind("<Enter>", lambda e: btn_pessoal.configure(border_color=("black", "white")))
+        btn_pessoal.bind("<Leave>", lambda e: btn_pessoal.configure(border_color="#16a085"))
+
+        # === BOTÃO EMISSOR PORTAL NACIONAL ===
+        # Emissão direto pela API oficial do Emissor Nacional (SEFIN),
+        # obrigatória em Jaraguá do Sul a partir de 01/09/2026 e já usada
+        # hoje para outras cidades conveniadas ao Ambiente Nacional.
+        btn_emissor_pn = ctk.CTkButton(
+            f_b, text="EMISSOR PORTAL NACIONAL",
+            command=lambda: self.verificar_acesso_modulo(self.emissor_pn.tela_escolha_emissor_pn),
+            width=btn_w, height=btn_h, font=("Arial", 14, "bold"),
+            fg_color="#2980b9", hover_color="#2980b9",
+            border_width=2, border_color="#2980b9"
+        )
+        btn_emissor_pn.grid(row=2, column=1, padx=20, pady=20)
+        btn_emissor_pn.bind("<Enter>", lambda e: btn_emissor_pn.configure(border_color=("black", "white")))
+        btn_emissor_pn.bind("<Leave>", lambda e: btn_emissor_pn.configure(border_color="#2980b9"))
 
         ctk.CTkLabel(self.container, text="Powered by: Guilherme Abentroth", font=("Arial", 12)).pack(side=tk.BOTTOM,
                                                                                                       anchor="w",
@@ -528,12 +638,20 @@ class SistemaUnificadoGUI:
     def tela_escolha_ailos(self):
         configs = [
             {"texto": "Ailos V1 (Padrão)", "img": "AILOS.png", "cmd": self.contabil.fluxo_ailos_v1},
-            {"texto": "Ailos V2 (Viacredi)", "img": "AILOS2.png", "cmd": self.contabil.fluxo_ailos_v2}
+            {"texto": "Ailos V2 (Viacredi)", "img": "AILOS2.png", "cmd": self.contabil.fluxo_ailos_v2},
+            {"texto": "Ailos V3 (Viacredi Conta Corrente)", "img": "AILOS3.png", "cmd": self.contabil.fluxo_ailos_v3}
         ]
         self.criar_tela_multi_modelos("AILOS", "#005A9C", configs)
 
     def tela_escolha_itau(self):
-        self.construir_tela_unico_modelo("Itaú", "ITAU.png", "#EC7000", self.contabil.fluxo_itau)
+        configs = [
+            {"texto": "Itaú V1 (Conta Corrente)", "img": "ITAU.png", "cmd": self.contabil.fluxo_itau},
+            {"texto": "Itaú V2 (Extrato Mensal)", "img": "ITAU2.png", "cmd": self.contabil.fluxo_itau_v2}
+        ]
+        self.criar_tela_multi_modelos("ITAÚ", "#EC7000", configs)
+
+    def tela_escolha_bradesco(self):
+        self.construir_tela_unico_modelo("Bradesco", "BRADESCO.png", "#cc092f", self.contabil.fluxo_bradesco)
 
     def tela_escolha_ifood(self):
         self.construir_tela_unico_modelo("iFood", "IFOOD.png", "#EA1D2C", self.contabil.fluxo_ifood)
@@ -545,10 +663,17 @@ class SistemaUnificadoGUI:
         self.construir_tela_unico_modelo("MagaluPay", "MAGALUPAY.png", "#0086FF", self.contabil.fluxo_magalupay)
 
     def tela_escolha_cresol(self):
-        self.construir_tela_unico_modelo("Cresol", "CRESOL.png", "#006B3F", self.contabil.fluxo_cresol)
+        configs = [
+            {"texto": "Cresol V1 (Padrão)", "img": "CRESOL.png", "cmd": self.contabil.fluxo_cresol},
+            {"texto": "Cresol V2 (Extrato Consolidado)", "img": "CRESOL2.png", "cmd": self.contabil.fluxo_cresol_v2}
+        ]
+        self.criar_tela_multi_modelos("CRESOL", "#006B3F", configs)
 
     def tela_escolha_c6(self):
         self.construir_tela_unico_modelo("C6 Bank", "C6.png", "#242424", self.contabil.fluxo_c6)
+
+    def tela_escolha_rendimento(self):
+        self.construir_tela_unico_modelo("Rendimento", "RENDIMENTO.png", "#004A93", self.contabil.fluxo_rendimento)
 
     def criar_tela_multi_modelos(self, nome_banco, cor_titulo, funcoes):
         self.limpar_tela()
@@ -664,10 +789,13 @@ class SistemaUnificadoGUI:
                       font=f_font, fg_color="#fdb913", hover_color="#c99106").pack(side="left", padx=10)
         ctk.CTkButton(f_b1, text="Banco Inter", command=self.tela_escolha_inter, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#FF7A00", hover_color="#CC6200").pack(side="left", padx=10)
+        ctk.CTkButton(f_b1, text="Bradesco", command=self.tela_escolha_bradesco, width=btn_w, height=btn_h,
+                      font=f_font, fg_color="#cc092f", hover_color="#99061f").pack(side="left", padx=10)
         ctk.CTkButton(f_b1, text="C6 Bank", command=self.tela_escolha_c6, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#242424", hover_color="#141414").pack(side="left", padx=10)
         ctk.CTkButton(f_b1, text="Caixa", command=self.tela_escolha_caixa, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#005CA9", hover_color="#00407a").pack(side="left", padx=10)
+
 
         f_b2 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b2.pack(pady=10)
@@ -690,17 +818,20 @@ class SistemaUnificadoGUI:
                       fg_color="#8A05BE", hover_color="#6B0394").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="PagBank", command=self.tela_escolha_pagbank, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#8BC34A", hover_color="#649131").pack(side="left", padx=10)
+        ctk.CTkButton(f_b3, text="Rendimento", command=self.tela_escolha_rendimento, width=btn_w, height=btn_h,
+                      font=f_font, fg_color="#004A93", hover_color="#00366e").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="Santander", command=self.tela_escolha_santander, width=btn_w, height=btn_h,
                       font=f_font, fg_color="#ec0000", hover_color="#b30000").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="Sicoob", command=self.tela_escolha_sicoob, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#00ae9d", hover_color="#008073").pack(side="left", padx=10)
         ctk.CTkButton(f_b3, text="Sicredi", command=self.tela_escolha_sicredi, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#32BC43", hover_color="#248a31").pack(side="left", padx=10)
-        ctk.CTkButton(f_b3, text="Stone", command=self.tela_escolha_stone, width=btn_w, height=btn_h, font=f_font,
-                      fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
+
 
         f_b4 = ctk.CTkFrame(f_b, fg_color="transparent")
         f_b4.pack(pady=20)
+        ctk.CTkButton(f_b4, text="Stone", command=self.tela_escolha_stone, width=btn_w, height=btn_h, font=f_font,
+                      fg_color="#00A868", hover_color="#007a4c").pack(side="left", padx=10)
         ctk.CTkButton(f_b4, text="XP", command=self.tela_escolha_xp, width=btn_w, height=btn_h, font=f_font,
                       fg_color="#000000", hover_color="#333333").pack(side="left", padx=10)
         ctk.CTkButton(f_b4, text="Excel > OFX", command=lambda: self.contabil.gerar_ofx(self.log_msg), width=btn_w,
@@ -772,8 +903,30 @@ class SistemaUnificadoGUI:
         self.fiscal.executar_fiscal(path_atual, self.log_msg)
         messagebox.showinfo("Sucesso", "Concluído.")
 
+    def tratar_erro_callback(self, exc_type, exc_value, exc_traceback):
+        erro_texto = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        try:
+            caminho_log = os.path.join(self.pasta_exe, "erros.log")
+            with open(caminho_log, "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now()}]\n{erro_texto}\n")
+        except Exception:
+            pass
+        messagebox.showerror("Erro inesperado", f"{exc_value}\n\nDetalhes salvos em erros.log")
+
+
+def tratar_erro_thread(args):
+    erro_texto = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+    try:
+        pasta_exe = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
+            else os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(pasta_exe, "erros.log"), "a", encoding="utf-8") as f:
+            f.write(f"\n[{datetime.now()}] (thread {args.thread.name})\n{erro_texto}\n")
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
+    threading.excepthook = tratar_erro_thread
     root = ctk.CTk()
     app = SistemaUnificadoGUI(root)
     root.mainloop()

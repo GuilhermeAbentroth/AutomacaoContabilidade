@@ -20,6 +20,8 @@ class PortalNacionalModulo:
         self.pasta_exe = parent.pasta_exe
         self.debug_profile = r"C:\ChromeDebug_NFSe"
         self.parar_solicitado = False
+        from nfse_api_modulo import NFSeAPIModulo
+        self.nfse_api = NFSeAPIModulo(parent)
 
     def selecionar_pasta(self):
         p = filedialog.askdirectory()
@@ -119,8 +121,37 @@ class PortalNacionalModulo:
             log_func(f"Aviso de conexão: {str(e)[:50]}", "erro")
             log_func("Dica: Se travou, feche todas as janelas do Chrome e tente ACESSAR novamente.")
 
+    def iniciar_automacao_completa(self, log_func):
+        """Baixa DESTINADAS e EMITIDAS em sequência com resumo final."""
+        import threading
+        threading.Thread(
+            target=self._executar_completo,
+            args=(log_func,),
+            daemon=True
+        ).start()
+
+    def _executar_completo(self, log_func):
+        resultados = {}
+        for tipo, nome in [(1, "DESTINADAS"), (2, "EMITIDAS")]:
+            log_func(f"Iniciando {nome}...", divisor=True)
+            try:
+                count = self.iniciar_automacao_geral(log_func, tipo)
+                resultados[nome] = count if count else 0
+            except Exception as e:
+                log_func(f"Erro ao processar {nome}: {e}", "erro")
+                resultados[nome] = 0
+
+        log_func("", divisor=True)
+        log_func("=== RESUMO FINAL ===", "info")
+        for nome, count in resultados.items():
+            if count == 0:
+                log_func(f"Não houve notas {nome} no período.", "info")
+            else:
+                log_func(f"Foram baixadas {count} nota(s) {nome}.", "sucesso")
+
     def iniciar_automacao_geral(self, log_func, tipo):
         self.parar_solicitado = False
+        total_baixados_geral = 0  # ← aqui
         vel_config = self.parent.configuracoes.get("velocidade", "1")
         mult = 1.0 if vel_config == "1" else (0.5 if vel_config == "2" else 0.05)
 
@@ -130,11 +161,11 @@ class PortalNacionalModulo:
             from playwright.sync_api import sync_playwright
         except:
             messagebox.showerror("Erro", "Playwright não instalado.")
-            return
+            return 0
 
         if not self.verificar_porta_debug():
             messagebox.showwarning("Erro", "Chrome não detectado. Use o Botão 1.")
-            return
+            return 0
 
         strCaminhoBase = self.ent_caminho.get()
         strDtaIni = self.ent_data_ini.get()
@@ -160,7 +191,7 @@ class PortalNacionalModulo:
                 pagina = next((p for p in context.pages if "nfse.gov.br" in p.url), None)
                 if not pagina:
                     log_func("Portal não detectado.", "erro")
-                    return
+                    return 0
 
                 pagina.goto(url_alvo)
                 pagina.wait_for_selector("#datainicio", state="visible", timeout=60000)
@@ -193,13 +224,27 @@ class PortalNacionalModulo:
 
                     log_func("Aguardando tabela...")
                     try:
-                        pagina.wait_for_selector("tbody tr, .alert-warning", timeout=60000)
+                        pagina.wait_for_function("""
+                            () => document.querySelector('tbody tr') !== null ||
+                                  document.querySelector('.alert-warning') !== null ||
+                                  document.body.innerText.includes('Nenhum registro encontrado')
+                        """, timeout=60000)
                     except:
-                        pagina.get_by_role("button", name="Filtrar").click()
-                        pagina.wait_for_selector("tbody tr", timeout=30000)
+                        log_func(f"Sem resposta do servidor para {inicio} a {fim}.", "info")
+                        continue
 
                     pagina.wait_for_load_state("load")
                     time.sleep(2 * mult)
+
+                    # Verifica se não há notas antes de processar
+                    sem_notas = (
+                            pagina.locator(".alert-warning").count() > 0 or
+                            pagina.locator("tbody tr").count() == 0 or
+                            pagina.get_by_text("Nenhum registro encontrado").count() > 0
+                    )
+                    if sem_notas:
+                        log_func(f"Nenhuma nota no período {inicio} a {fim}.", "info")
+                        continue
 
                     if pagina.get_by_text('Total de ').count() > 0:
                         total_texto = pagina.get_by_text('Total de ').inner_text()
@@ -247,6 +292,7 @@ class PortalNacionalModulo:
                                     nome_xml = f_xml.suggested_filename
                                     if not nome_xml.endswith(".xml"): nome_xml += ".xml"
                                     f_xml.save_as(os.path.join(pasta_raiz, nome_xml))
+                                    self.parent.estatisticas.registrar_evento("nota_baixada")
                                     pagina.keyboard.press("Escape")
                                     time.sleep(1.2 * mult)
 
@@ -271,6 +317,7 @@ class PortalNacionalModulo:
                                         'subpasta_destino': status_limpo
                                     })
                                     baixados += 1
+                                    total_baixados_geral += 1
                                     log_func(f"Download {baixados}/{total_notas} OK")
                                 except Exception as e:
                                     log_func(f"Erro: {str(e)[:20]}", "erro")
@@ -501,8 +548,11 @@ class PortalNacionalModulo:
                 else:
                     log_func("Concluído!", "sucesso")
                 messagebox.showinfo("Sistema", "Finalizado.")
+                return total_baixados_geral
+
         except Exception as e:
             log_func(f"ERRO GERAL: {str(e)}", "erro")
+            return total_baixados_geral
 
     # =========================================================================
     # UI COM CUSTOM TKINTER E MÁSCARA DE DATAS
@@ -616,6 +666,15 @@ class PortalNacionalModulo:
         ctk.CTkButton(f_btns, text="3. EMITIDAS", command=lambda: self.iniciar_automacao_geral(self.parent.log_msg, 2),
                       fg_color="#f39200", hover_color="#cc7a00", font=btn_font, height=btn_h, width=btn_w).pack(
             side="left", padx=5)
+
+        ctk.CTkButton(f_btns, text="4. COMPLETO",
+                      command=lambda: self.iniciar_automacao_completa(self.parent.log_msg),
+                      fg_color="#6c3483", hover_color="#512e5f",
+                      font=btn_font, height=btn_h, width=btn_w).pack(side="left", padx=5)
+        ctk.CTkButton(f_btns, text="5. NFSE API",
+                      command=self.nfse_api.tela_api,
+                      fg_color="#005A9C", hover_color="#00467a",
+                      font=btn_font, height=btn_h, width=btn_w).pack(side="left", padx=5)
 
         ctk.CTkButton(f_btns, text="PARAR", command=self.interromper_processo,
                       fg_color="#CC0000", hover_color="#a30000", font=btn_font, height=btn_h, width=100).pack(

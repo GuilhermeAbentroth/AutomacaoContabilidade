@@ -207,6 +207,7 @@ class AilosProcessorV2(BaseProcessor):
             log_func(f"Erro ao processar AILOS V2 {arquivo}: {e}", "erro")
             return None
 
+
     def _finalizar_transacao(self, transacao, registros):
         """
         Função auxiliar para limpar o lixo de saldos e documentos do histórico.
@@ -238,3 +239,87 @@ class AilosProcessorV2(BaseProcessor):
 
         # Reseta o buffer para evitar vazamentos de memória (embora o objeto seja descartado de seguida)
         transacao["HISTORICO_BRUTO"] = ""
+
+
+# ==========================================
+# CLASSE 3: AILOS V3 (Extrato Conta Corrente Viacredi - Novo Layout)
+# ==========================================
+class AilosProcessorV3(BaseProcessor):
+    def __init__(self, pasta_pdf, pasta_excel):
+        super().__init__(pasta_pdf, pasta_excel)
+        self.nome_modelo = "AILOS_V3"
+
+    def processar(self, arquivo, log_func):
+        log_func(f"Lendo AILOS_V3: {arquivo}")
+        caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
+        registros = []
+
+        try:
+            with pdfplumber.open(caminho_pdf) as pdf:
+                saldo_anterior = None
+
+                for page in pdf.pages:
+                    texto = page.extract_text()
+                    if not texto:
+                        continue
+
+                    for linha in texto.split("\n"):
+                        tokens = linha.split()
+                        if len(tokens) < 3:
+                            continue
+
+                        if not re.match(r'^\d{2}/\d{2}/\d{4}$', tokens[0]):
+                            continue
+
+                        saldo_tok = tokens[-1]
+                        valor_tok = tokens[-2]
+
+                        if not re.match(r'^-?\d{1,3}(\.\d{3})*,\d{2}$', saldo_tok):
+                            continue
+
+                        saldo_atual = self.limpar_valor(saldo_tok)
+
+                        # Linha "SALDO ANTERIOR": apenas ancora o saldo, não gera transação
+                        if valor_tok == "-":
+                            saldo_anterior = saldo_atual
+                            continue
+
+                        if not re.match(r'^\d{1,3}(\.\d{3})*,\d{2}$', valor_tok):
+                            continue
+
+                        valor_num = self.limpar_valor(valor_tok)
+                        desc = " ".join(tokens[1:-2]).strip()
+
+                        if saldo_anterior is None or valor_num == 0:
+                            saldo_anterior = saldo_atual
+                            continue
+
+                        delta = round(saldo_atual - saldo_anterior, 2)
+                        if delta < 0:
+                            tipo = "DEBITO"
+                            valor_final = -abs(valor_num)
+                        else:
+                            tipo = "CREDITO"
+                            valor_final = abs(valor_num)
+
+                        registros.append({
+                            "DATA": tokens[0],
+                            "HISTORICO": self.remover_acentos(desc).upper(),
+                            "VALOR": valor_final,
+                            "TIPO": tipo
+                        })
+
+                        saldo_anterior = saldo_atual
+
+            if registros:
+                df = self.preparar_dataframe(registros)
+                if df is not None:
+                    nome_base = os.path.splitext(arquivo)[0] + "_V3"
+                    return self.salvar_arquivo(df, nome_base)
+            else:
+                log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
+                return None
+
+        except Exception as e:
+            log_func(f"Erro ao processar AILOS V3 {arquivo}: {e}", "erro")
+            return None

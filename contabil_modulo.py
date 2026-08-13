@@ -214,6 +214,114 @@ class ContabilModulo:
 
         log_msg(f"FIM ITAÚ - {time.time() - start:.2f}s", "info")
 
+    def fluxo_itau_v2(self, log_msg, bridge):
+        from processadores.itau import ItauProcessorV2
+        import time
+
+        start = time.time()
+        log_msg("Iniciando conversão do banco ITAÚ V2 (Extrato Mensal)...")
+        processor = ItauProcessorV2(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        arquivos = self.filtrar_arquivos(['itau'])
+        excels = []
+
+        if not arquivos:
+            log_msg("Aviso: Nenhum PDF do Itaú encontrado.", "erro")
+            if callable(bridge):
+                bridge([])
+            return
+
+        for arquivo in arquivos:
+            try:
+                resultado = processor.processar(arquivo, log_msg)
+                if resultado:
+                    excels.append(resultado)
+            except Exception as e:
+                log_msg(f"Erro no processador Itaú V2: {e}", "erro")
+
+        if excels:
+            log_msg(f"Sucesso! {len(excels)} arquivo(s) processado(s).")
+            if callable(bridge):
+                bridge(excels)
+        else:
+            log_msg("Nenhum arquivo do Itaú foi convertido.", "erro")
+            if callable(bridge):
+                bridge([])
+
+        log_msg(f"FIM ITAÚ V2 - {time.time() - start:.2f}s", "info")
+
+    def fluxo_rendimento(self, log_msg, bridge):
+        from processadores.rendimento import RendimentoProcessor
+        import time
+
+        start = time.time()
+        log_msg("Iniciando conversão do banco RENDIMENTO...")
+        processor = RendimentoProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        arquivos = self.filtrar_arquivos(['rendimento'])
+        excels = []
+
+        if not arquivos:
+            log_msg("Aviso: Nenhum PDF do Rendimento encontrado.", "erro")
+            if callable(bridge):
+                bridge([])
+            return
+
+        for arquivo in arquivos:
+            try:
+                resultado = processor.processar(arquivo, log_msg)
+                if resultado:
+                    excels.append(resultado)
+            except Exception as e:
+                log_msg(f"Erro no processador Rendimento: {e}", "erro")
+
+        if excels:
+            log_msg(f"Sucesso! {len(excels)} arquivo(s) processado(s).")
+            if callable(bridge):
+                bridge(excels)
+        else:
+            log_msg("Nenhum arquivo do Rendimento foi convertido.", "erro")
+            if callable(bridge):
+                bridge([])
+
+        log_msg(f"FIM RENDIMENTO - {time.time() - start:.2f}s", "info")
+
+    def fluxo_bradesco(self, log_msg, bridge):
+        from processadores.bradesco import BradescoProcessor
+        import time
+
+        start = time.time()
+        log_msg("Iniciando conversão do banco BRADESCO...")
+        processor = BradescoProcessor(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        arquivos = self.filtrar_arquivos(['bradesco'])
+        excels = []
+
+        if not arquivos:
+            log_msg("Aviso: Nenhum PDF do Bradesco encontrado.", "erro")
+            if callable(bridge):
+                bridge([])
+            return
+
+        for arquivo in arquivos:
+            try:
+                resultado = processor.processar(arquivo, log_msg)
+                if resultado:
+                    excels.append(resultado)
+            except Exception as e:
+                log_msg(f"Erro no processador Bradesco: {e}", "erro")
+
+        if excels:
+            log_msg(f"Sucesso! {len(excels)} arquivo(s) processado(s).")
+            if callable(bridge):
+                bridge(excels)
+        else:
+            log_msg("Nenhum arquivo do Bradesco foi convertido.", "erro")
+            if callable(bridge):
+                bridge([])
+
+        log_msg(f"FIM BRADESCO - {time.time() - start:.2f}s", "info")
+
     def fluxo_infinitepay(self, log_msg, bridge):
         from processadores.infinitepay import InfinitePayProcessor
         import time
@@ -447,6 +555,32 @@ class ContabilModulo:
         finalizar_func(excels)
         log_func(f"FIM CRESOL - {time.time() - start:.2f}s", "info")
 
+    def fluxo_cresol_v2(self, log_func, finalizar_func):
+        from processadores.cresol import CresolProcessorV2
+        import time
+
+        start = time.time()
+        processador = CresolProcessorV2(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Procura por ficheiros que tenham "cresol" no nome
+        arquivos = self.filtrar_arquivos(['cresol'])
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como CRESOL na pasta de PDFs.", "erro")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Cresol V2: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM CRESOL V2 - {time.time() - start:.2f}s", "info")
+
     def fluxo_mercadopago(self, log_func, finalizar_func):
         # AQUI: Ajustado para o nome mercadopago.py
         from processadores.mercadopago import MercadoPagoProcessor
@@ -674,6 +808,36 @@ class ContabilModulo:
         finalizar_func(excels)
         log_func(f"FIM AILOS V2 - {time.time() - start:.2f}s", "info")
 
+    # -------------------------------------------------------------------------
+    # FLUXO AILOS V3 (Extrato Conta Corrente - Novo Layout Viacredi)
+    # -------------------------------------------------------------------------
+    def fluxo_ailos_v3(self, log_func, finalizar_func):
+        from processadores.ailos import AilosProcessorV3
+        import time
+
+        start = time.time()
+        processador = AilosProcessorV3(self.PASTA_PDF, self.PASTA_EXCEL)
+
+        # Usando a sua lista de palavras-chave original
+        arquivos = self.filtrar_arquivos(self.KEYWORDS_AILOS)
+        excels = []
+
+        if not arquivos:
+            log_func("Aviso: Nenhum arquivo reconhecido como AILOS na pasta de PDFs.", "erro")
+            log_func(f"Palavras-chave procuradas: {self.KEYWORDS_AILOS}", "info")
+
+        for arquivo in arquivos:
+            try:
+                resultado = processador.processar(arquivo, log_func)
+                if resultado:
+                    excels.append(resultado)
+                    log_func(f"Sucesso: {resultado}", "sucesso")
+            except Exception as e:
+                log_func(f"Erro no processador Ailos V3: {e}", "erro")
+
+        finalizar_func(excels)
+        log_func(f"FIM AILOS V3 - {time.time() - start:.2f}s", "info")
+
     def fluxo_sanitizar_ofx_caixa(self, log_func, finalizar_func):
         from processadores.ofx_caixa import CaixaOfxSanitizer
         import time
@@ -728,6 +892,7 @@ class ContabilModulo:
                           encoding="utf-8") as f:
                     f.write(h + txs + f_out)
                 log_func(f"OFX: {os.path.splitext(arquivo)[0]}.ofx", "sucesso")
+                self.parent.estatisticas.registrar_evento("extrato_convertido")
             except Exception as e:
                 log_func(f"Erro OFX {arquivo}: {e}", "erro")
         log_func(f"OFX CONCLUÍDO - {time.time() - start_ofx:.2f}s", "info")

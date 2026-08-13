@@ -20,6 +20,7 @@ class FiscalModulo:
             os.makedirs(p, exist_ok=True)
 
     def executar_fiscal(self, saida_path, log_func):
+        self.parent.estatisticas.registrar_evento("fiscal_unificacao")
         os.makedirs(saida_path, exist_ok=True)
         arquivos = [f for f in glob.glob(os.path.join(self.ENTRADA, "*.*")) if os.path.isfile(f)]
 

@@ -1,9 +1,13 @@
 {
-    "ultimo_caminho": "C:\\Users\\guilh\\Desktop\\Automatiza\u00e7\u00e3o Pr\u00e1tica v2.0\\saida de arquivos",
-    "pasta_jpype": "C:/Users/guilh/Desktop/dependencias/ponte_java",
-    "pasta_playwright": "C:/Users/guilh/Desktop/dependencias/driver_navegador",
-    "caminho_banco": "C:\\Users\\guilh\\Desktop\\Automatiza\u00e7\u00e3o Pr\u00e1tica v2.0\\dados_escritorio.db",
+    "ultimo_caminho": "C:/Users/guilh/Downloads/TESTE MARSAL",
+    "pasta_jpype": "",
+    "pasta_playwright": "",
+    "caminho_banco": "C:\\Users\\guilh\\Desktop\\Automa\u00e7\u00e3o Abentroth\\dados_escritorio.db",
     "chrome_path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "velocidade": "3",
-    "licenca": "QUJFTlRST1RIfDIwMjYtMTItMzF8N2M0Y2FiNGU3NDAzYzExMA=="
+    "licenca": "",
+    "pasta_pdfs": "C:\\Users\\guilh\\Desktop\\Automa\u00e7\u00e3o Abentroth\\NFSe_PDFs",
+    "pasta_reinf": "C:\\Users\\guilh\\Desktop\\Automa\u00e7\u00e3o Abentroth\\REINF",
+    "tema": "Dark",
+    "ultimo_cnpj_prefeitura_livro": "83102459000123"
 }

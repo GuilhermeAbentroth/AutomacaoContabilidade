@@ -159,3 +159,98 @@ class CresolProcessor(BaseProcessor):
             "VALOR": valor_final,
             "TIPO": tipo
         }
+
+
+# ==========================================
+# CRESOL V2 (Extrato Consolidado de Conta Corrente)
+# ==========================================
+class CresolProcessorV2(BaseProcessor):
+    def __init__(self, pasta_pdf, pasta_excel):
+        super().__init__(pasta_pdf, pasta_excel)
+        self.nome_modelo = "CRESOL_V2"
+
+    def processar(self, arquivo, log_func):
+        log_func(f"Lendo Cresol V2 (Extrato Consolidado): {arquivo}")
+        caminho_pdf = os.path.join(self.pasta_pdf, arquivo)
+        registros = []
+
+        try:
+            doc = fitz.open(caminho_pdf)
+
+            for page in doc:
+                words = page.get_text("words")
+                if not words:
+                    continue
+
+                # Agrupa as palavras em linhas pela coordenada Y (o layout desta
+                # tabela é montado por colunas fixas, não pela ordem do texto)
+                words.sort(key=lambda w: (round(w[1]), w[0]))
+                linhas_words = []
+                linha_atual = []
+                y_ref = None
+
+                for w in words:
+                    if y_ref is None or abs(w[1] - y_ref) <= 3:
+                        linha_atual.append(w)
+                        y_ref = w[1] if y_ref is None else y_ref
+                    else:
+                        linhas_words.append(linha_atual)
+                        linha_atual = [w]
+                        y_ref = w[1]
+                if linha_atual:
+                    linhas_words.append(linha_atual)
+
+                for lw in linhas_words:
+                    lw.sort(key=lambda w: w[0])
+
+                    # Colunas fixas da tabela: Data Movimento | Lançamento | Identificação | Valor
+                    col_data = [w[4] for w in lw if w[0] < 95]
+                    col_lanc = [w[4] for w in lw if 95 <= w[0] < 335]
+                    col_ident = [w[4] for w in lw if 335 <= w[0] < 520]
+                    col_valor = [w[4] for w in lw if w[0] >= 520]
+
+                    data_txt = " ".join(col_data).strip()
+                    if not re.match(r'^\d{2}/\d{2}/\d{4}$', data_txt):
+                        continue
+
+                    valor_txt = " ".join(col_valor).strip()
+                    match_valor = re.match(r'^(\d{1,3}(?:\.\d{3})*,\d{2})\s*([DC])$', valor_txt)
+                    if not match_valor:
+                        continue
+
+                    lanc_txt = " ".join(col_lanc).strip()
+
+                    # Linha de "Saldo Anterior": apenas ancora o saldo do dia, não é transação
+                    if re.match(r'^SALDO\s+ANTERIOR$', lanc_txt, re.IGNORECASE):
+                        continue
+
+                    ident_txt = " ".join(col_ident).strip()
+                    historico = (lanc_txt + " " + ident_txt).strip()
+                    historico = re.sub(r'\s+', ' ', historico)
+
+                    valor_num = self.limpar_valor(match_valor.group(1))
+                    tipo = "DEBITO" if match_valor.group(2) == "D" else "CREDITO"
+                    valor_final = -abs(valor_num) if tipo == "DEBITO" else abs(valor_num)
+
+                    if valor_num == 0 or not historico:
+                        continue
+
+                    registros.append({
+                        "DATA": data_txt,
+                        "HISTORICO": self.remover_acentos(historico).upper(),
+                        "VALOR": valor_final,
+                        "TIPO": tipo
+                    })
+
+            if registros:
+                df = self.preparar_dataframe(registros)
+                if df is not None:
+                    nome_base = os.path.splitext(arquivo)[0] + "_V2"
+                    return self.salvar_arquivo(df, nome_base)
+
+            log_func(f"Aviso: Nenhuma transação validada em {arquivo}", "erro")
+            return None
+
+        except Exception as e:
+            log_func(f"Erro CRESOL V2 {arquivo}: {e}", "erro")
+            return None

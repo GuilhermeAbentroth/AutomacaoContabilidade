@@ -41,7 +41,9 @@ class EmissorBethaCertificado:
             "cnpj_prestador": self.ent_cnpj_prest.get(),
             "im_prestador": self.ent_im_prest.get(),
             "caminho_excel": self.ent_excel.get(),
-            "caminho_pfx": self.ent_pfx.get()
+            "caminho_pfx": self.ent_pfx.get(),
+            # FIX: salva o regime especial para a próxima sessão
+            "reg_esp_trib": self.combo_reg_esp.get()
         }
         with open(self.CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(dados, f, indent=4)
@@ -74,6 +76,33 @@ class EmissorBethaCertificado:
         self.ent_im_prest.insert(0, self.config.get("im_prestador", ""))
         self.ent_im_prest.pack(side="left", padx=10)
 
+        # -------------------------------------------------------
+        # FIX: ComboBox de Regime Especial de Tributação
+        # 0 = Nenhum (padrão SN normal — gera ISS por nota)
+        # 6 = Sociedade de Profissionais (ISS fixo, não por nota)
+        # -------------------------------------------------------
+        f_line_reg = ctk.CTkFrame(f_prest, fg_color="transparent")
+        f_line_reg.pack(fill="x", padx=20, pady=(0, 10))
+
+        ctk.CTkLabel(f_line_reg, text="Regime Esp. Tributação:", width=160, anchor="w",
+                     font=("Arial", 11, "bold")).pack(side="left")
+        self.combo_reg_esp = ctk.CTkComboBox(f_line_reg, values=[
+            "0 - Nenhum",
+            "1 - Ato Cooperado (Cooperativa)",
+            "2 - Estimativa",
+            "3 - Microempresa Municipal",
+            "4 - Notário ou Registrador",
+            "5 - Profissional Autônomo",
+            "6 - Sociedade de Profissionais",
+            "9 - Outros"
+        ], width=260, state="readonly")
+        self.combo_reg_esp.set(self.config.get("reg_esp_trib", "0 - Nenhum"))
+        self.combo_reg_esp.pack(side="left", padx=10)
+
+        ctk.CTkLabel(f_line_reg,
+                     text="⚠ Use '6' para evitar ISS por nota (cobrança fixa por profissional)",
+                     font=("Arial", 10), text_color="#e67e22").pack(side="left", padx=5)
+
         # --- ARQUIVOS ---
         f_card = ctk.CTkFrame(self.container)
         f_card.pack(fill="x", padx=40, pady=10)
@@ -84,7 +113,7 @@ class EmissorBethaCertificado:
         f_senha.pack(fill="x", padx=20, pady=5)
         ctk.CTkLabel(f_senha, text="Senha Certificado:", font=("Arial", 12, "bold"), width=120, anchor="w").pack(
             side="left")
-        self.ent_senha_cert = ctk.CTkEntry(f_senha, show="*", width=200);
+        self.ent_senha_cert = ctk.CTkEntry(f_senha, show="*", width=200)
         self.ent_senha_cert.pack(side="left", padx=10)
 
         f_amb = ctk.CTkFrame(f_card, fg_color="transparent")
@@ -108,19 +137,32 @@ class EmissorBethaCertificado:
         ctk.CTkButton(f_btns, text="Voltar", command=self.parent.mostrar_menu_inicial, width=150, height=50,
                       fg_color="gray").pack(side="left")
 
+    def _sanitizar_xml(self, texto: str) -> str:
+        """Escapa caracteres especiais para XML mantendo o conteúdo original."""
+        if not texto:
+            return ""
+        return (texto
+                .replace("&", "&amp;")  # DEVE ser o primeiro sempre
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace('"', "&quot;")
+                .replace("'", "&apos;"))
+
     def _criar_linha_arquivo(self, parent, label, valor_inicial):
         f = ctk.CTkFrame(parent, fg_color="transparent")
         f.pack(fill="x", padx=20, pady=5)
         ctk.CTkLabel(f, text=label, font=("Arial", 12, "bold"), width=120, anchor="w").pack(side="left")
-        entry = ctk.CTkEntry(f, width=400);
-        entry.insert(0, valor_inicial);
+        entry = ctk.CTkEntry(f, width=400)
+        entry.insert(0, valor_inicial)
         entry.pack(side="left", padx=10)
         ctk.CTkButton(f, text="...", width=40, command=lambda: self._selecionar(entry)).pack(side="left")
         return entry
 
     def _selecionar(self, entry):
         p = filedialog.askopenfilename()
-        if p: entry.delete(0, tk.END); entry.insert(0, p)
+        if p:
+            entry.delete(0, tk.END)
+            entry.insert(0, p)
 
     def start_thread(self):
         self.salvar_configuracoes()
@@ -132,13 +174,18 @@ class EmissorBethaCertificado:
         cnpj_p = "".join(filter(str.isdigit, self.ent_cnpj_prest.get()))
         im_p = self.ent_im_prest.get().strip()
 
+        # FIX: captura só o número do regime especial (ex: "6 - Sociedade..." → "6")
+        reg_esp_trib = self.combo_reg_esp.get().split(" - ")[0].strip()
+
         cert_manager = CertificadoA1(self.ent_pfx.get(), self.ent_senha_cert.get())
         if not cert_manager.carregar_chaves(self.parent.log_msg): return
+
+        self.parent.log_msg(
+            f"Regime Especial de Tributação: {self.combo_reg_esp.get()}", "info")
 
         try:
             df = pd.read_excel(self.ent_excel.get())
             for i, row in df.iterrows():
-                # --- VOLTANDO PARA A LÓGICA DE TEMPO ORIGINAL (Mas recuando 5 min) ---
                 tempo_seguro = time.time() - 300
                 dh_emi = time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(tempo_seguro))
                 dt_comp = time.strftime('%Y-%m-%d', time.localtime(tempo_seguro))
@@ -151,20 +198,23 @@ class EmissorBethaCertificado:
                     "valor": f"{float(str(row.get('Serviço - Valor Serviço', 0)).replace(',', '.')):.2f}",
                     "cnpj_tomador": "".join(filter(str.isdigit, str(row.get('Tomador - CPF/CNPJ', '')))),
                     "cep_tomador": "".join(filter(str.isdigit, str(row.get('Tomador - CEP', '')))),
-                    "logradouro": str(row.get('Tomador - Endereco', '')).upper()[:80],
+                    "logradouro": self._sanitizar_xml(str(row.get('Tomador - Endereco', '')).upper())[:80],
                     "numero": str(row.get('Tomador - Número', 'SN')).upper()[:10],
-                    "bairro": str(row.get('Tomador - Bairro', '')).upper()[:60],
-                    "razao_social": str(row.get('Tomador - Nome/Razao Social', '')).upper()[:150],
-                    "servico": str(row.get('Serviço - Discriminação', '')).upper(),
+                    "bairro": self._sanitizar_xml(str(row.get('Tomador - Bairro', '')).upper())[:60],
+                    "razao_social": self._sanitizar_xml(str(row.get('Tomador - Nome/Razao Social', '')).upper())[:150],
+                    "servico": self._sanitizar_xml(str(row.get('Serviço - Discriminação', '')).upper()),
                     "item_lista": str(row.get('Serviço - Código Serviço', '1719')).replace('.', '').ljust(6, '0'),
-                    "cnpj_prest": cnpj_p, "im_prest": im_p, "nDPS": num_v.lstrip('0') or "1"
+                    "cnpj_prest": cnpj_p, "im_prest": im_p, "nDPS": num_v.lstrip('0') or "1",
+                    "aliq_iss": f"{float(str(row.get('Serviço - Alíquota ISS', '2.00')).replace(',', '.')):.2f}",
+                    "email_tomador": str(row.get('Tomador - Email', '')).strip().lower(),
+                    # FIX: passa o regime especial para o XML
+                    "reg_esp_trib": reg_esp_trib
                 }
 
                 self.parent.log_msg(f"Enviando DPS {i + 1}/{len(df)}...")
                 xml_corpo = self._gerar_xml_dps_corpo(dados, tp_amb)
                 xml_assinado = self._assinar_xml(xml_corpo, cert_manager)
 
-                # --- LIMPEZA MANUAL IDÊNTICA AO CÓDIGO QUE FUNCIONAVA ---
                 xml_limpo = xml_assinado.decode('utf-8').replace('<?xml version="1.0" encoding="UTF-8"?>', '').replace(
                     '<?xml version="1.0" ?>', '').strip()
 
@@ -175,11 +225,11 @@ class EmissorBethaCertificado:
                 resp = requests.post(url_ws, data=envelope.encode('utf-8'),
                                      headers={'Content-Type': 'text/xml;charset=UTF-8'}, timeout=60)
 
-                # --- LOG DE SUCESSO MELHORADO (Ignora namespaces como ns2:protocolo) ---
                 if resp.status_code == 200:
                     prot_match = re.search(r'protocolo>(.*?)</', resp.text, re.IGNORECASE)
                     if prot_match:
                         self.parent.log_msg(f"SUCESSO! Prot: {prot_match.group(1)}", "sucesso")
+                        self.parent.estatisticas.registrar_evento("nota_emitida")
                     else:
                         msg_match = re.search(r'mensagem>(.*?)</', resp.text, re.IGNORECASE)
                         self.parent.log_msg(f"REJEITADA: {msg_match.group(1) if msg_match else 'Erro Betha'}", "erro")
@@ -199,6 +249,17 @@ class EmissorBethaCertificado:
         return etree.tostring(signed_root, encoding='utf-8', xml_declaration=False)
 
     def _gerar_xml_dps_corpo(self, d, tp_amb):
+        doc_tomador = (
+            f"<CPF>{d['cnpj_tomador']}</CPF>"
+            if len(d['cnpj_tomador']) == 11
+            else f"<CNPJ>{d['cnpj_tomador']}</CNPJ>"
+        )
+
+        bloco_email_tomador = (
+            f"<email>{d['email_tomador']}</email>"
+            if d.get('email_tomador') else ""
+        )
+
         return f"""<DPS xmlns="http://www.betha.com.br/e-nota-dps" versao="1.01">
             <infDPS id="{d['id_45']}">
                 <tpAmb>{tp_amb}</tpAmb>
@@ -212,28 +273,33 @@ class EmissorBethaCertificado:
                 <prest>
                     <CNPJ>{d['cnpj_prest']}</CNPJ>
                     <IM>{d['im_prest']}</IM>
-                    <regTrib><opSimpNac>3</opSimpNac><regApTribSN>2</regApTribSN><regEspTrib>0</regEspTrib></regTrib>
+                    <regTrib>
+                        <opSimpNac>3</opSimpNac>
+                        <regApTribSN>2</regApTribSN>
+                        <regEspTrib>{d['reg_esp_trib']}</regEspTrib>
+                    </regTrib>
                 </prest>
                 <toma>
-                    <CNPJ>{d['cnpj_tomador']}</CNPJ>
+                    {doc_tomador}
                     <xNome>{d['razao_social']}</xNome>
                     <end>
                         <endNac><cMun>4208906</cMun><CEP>{d['cep_tomador']}</CEP></endNac>
                         <xLgr>{d['logradouro']}</xLgr><nro>{d['numero']}</nro><xBairro>{d['bairro']}</xBairro>
                     </end>
+                    {bloco_email_tomador}
                 </toma>
                 <serv>
                     <locPrest><cLocPrestacao>4208906</cLocPrestacao></locPrest>
                     <cServ>
                         <cTribNac>{d['item_lista']}</cTribNac>
                         <xDescServ>{d['servico']}</xDescServ>
-                        <cNBS>101011200</cNBS>
+                        <cNBS>113022100</cNBS>
                     </cServ>
                 </serv>
                 <valores>
                     <vServPrest><vServ>{d['valor']}</vServ></vServPrest>
                     <trib>
-                        <tribMun><tribISSQN>1</tribISSQN><pAliq>5.00</pAliq><tpRetISSQN>1</tpRetISSQN></tribMun>
+                        <tribMun><tribISSQN>1</tribISSQN><pAliq>{d['aliq_iss']}</pAliq><tpRetISSQN>1</tpRetISSQN></tribMun>
                         <totTrib><pTotTrib><pTotTribFed>0.00</pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>0.00</pTotTribMun></pTotTrib></totTrib>
                     </trib>
                 </valores>

@@ -9,7 +9,7 @@ from tkinter import messagebox
 # =========================================================================
 # Configurações — não alterar manualmente; atualizar via Sheets + Drive
 # =========================================================================
-VERSAO_LOCAL      = "8.3"
+VERSAO_LOCAL      = "10.4"
 SHEET_ID_VERSAO   = "1YeaJxYp_jYvakSDV35U4MXJ3dQt73Du9sInHEkEo9rk"
 EXE_DRIVE_ID      = "1l4q5Y11LY_eh88bVU3Z3Wbg2HwgwCktS"
 
