@@ -1,0 +1,77 @@
+name: Build e Publicar Release
+
+# Único gatilho: uma tag "vX.Y" empurrada para este repositório (privado).
+# Fluxo de release passa a ser só isso:
+#   git tag v10.6
+#   git push origin v10.6
+# O restante (bump de versão, build do .exe, zip, publicação) é automático.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    # Tem que ser Windows: PyInstaller gera executável para o mesmo SO onde roda.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # credenciais.py é gitignored (contém segredo) — nunca fica no repositório.
+      # É reconstituído aqui a partir de um Actions secret só no ambiente de build,
+      # e não é publicado em lugar nenhum (só entra compilado dentro do .exe).
+      - name: Restaurar credenciais.py
+        shell: pwsh
+        env:
+          CREDENCIAIS_PY: ${{ secrets.CREDENCIAIS_PY }}
+        run: |
+          if (-not $env:CREDENCIAIS_PY) {
+            Write-Error "Secret CREDENCIAIS_PY não configurado neste repositório (Settings > Secrets and variables > Actions)."
+            exit 1
+          }
+          Set-Content -Path credenciais.py -Value $env:CREDENCIAIS_PY -Encoding utf8
+
+      # Escreve a versão da tag (ex.: refs/tags/v10.6 -> "10.6") em versao.py,
+      # assim o número mostrado no app e comparado pelo updater sempre bate
+      # exatamente com a tag/release publicada — sem precisar lembrar de
+      # editar esse arquivo manualmente antes de cada release.
+      - name: Definir versão a partir da tag
+        shell: pwsh
+        run: |
+          $versao = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "Versão da release: $versao"
+          Set-Content -Path versao.py -Value "VERSAO = `"$versao`"" -Encoding utf8
+          echo "VERSAO=$versao" >> $env:GITHUB_ENV
+
+      - name: Build com PyInstaller (onedir)
+        run: pyinstaller Automacao_Abentroth.spec --noconfirm
+
+      - name: Compactar build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/Automacao_Abentroth/*" -DestinationPath "Automacao_Abentroth-v${{ env.VERSAO }}-win64.zip"
+
+      # Publica no repositório PÚBLICO dedicado a releases — não neste
+      # repositório de código (que continua privado). RELEASES_REPO_TOKEN é
+      # um Personal Access Token com permissão de "Contents: write" só
+      # naquele repositório público (ver README/checklist de deploy).
+      - name: Publicar Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: GuilhermeAbentroth/AutomacaoAbentroth-Updates
+          token: ${{ secrets.RELEASES_REPO_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: "Automação Abentroth v${{ env.VERSAO }}"
+          files: Automacao_Abentroth-v${{ env.VERSAO }}-win64.zip

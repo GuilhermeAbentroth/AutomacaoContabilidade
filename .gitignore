@@ -21,3 +21,6 @@ credenciais.py
 dist/
 build/
 *.spec
+# ...exceto o spec usado pelo workflow de release (precisa estar versionado
+# para a CI conseguir rodar "pyinstaller Automacao_Abentroth.spec")
+!Automacao_Abentroth.spec

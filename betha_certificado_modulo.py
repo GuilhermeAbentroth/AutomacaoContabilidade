@@ -12,6 +12,7 @@ import warnings
 from lxml import etree
 from signxml import XMLSigner
 from certificado_utils import CertificadoA1
+from utils import isolar_scroll_mouse
 
 # Silencia avisos técnicos do certificado
 warnings.filterwarnings("ignore", category=UserWarning, message=".*PKCS#12 bundle could not be parsed.*")
@@ -128,6 +129,7 @@ class EmissorBethaCertificado:
         self.parent.txt_log = scrolledtext.ScrolledText(f_log, width=120, height=8, state='disabled', bg="#1e1e1e",
                                                         fg="white")
         self.parent.txt_log.pack(padx=10, pady=5, fill="both", expand=True)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
         f_btns.pack(pady=20)

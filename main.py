@@ -11,6 +11,8 @@ from fiscal_api_modulo import FiscalAPIModulo
 
 from licenca_modulo import LicencaModulo
 from atualizador_modulo import AtualizadorModulo
+from utils import isolar_scroll_mouse
+from versao import VERSAO
 
 try:
     from PIL import Image, ImageTk
@@ -47,7 +49,7 @@ ctk.set_default_color_theme("blue")
 class SistemaUnificadoGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Automação Abentroth v10.4  ")
+        self.root.title(f"Automação Abentroth v{VERSAO}")
 
         # Define um tamanho mínimo razoável e inicia maximizado, ocupando
         # toda a tela disponível (notebook 14" ou monitor 24"), evitando
@@ -118,6 +120,9 @@ class SistemaUnificadoGUI:
         from pessoal_modulo import PessoalModulo
         self.pessoal = PessoalModulo(self)
 
+        from reforma_tributaria_modulo import ReformaTributariaModulo
+        self.reforma_tributaria = ReformaTributariaModulo(self)
+
         self.mostrar_menu_inicial()
 
 
@@ -153,7 +158,7 @@ class SistemaUnificadoGUI:
             try:
                 with open(self.caminho_config, "r", encoding="utf-8") as f:
                     dados = json.load(f)
-                    padrao.update(dados)
+                padrao.update(dados)
             except:
                 pass
         return padrao
@@ -260,9 +265,9 @@ class SistemaUnificadoGUI:
         janela = ctk.CTkToplevel(self.root)
         janela.title("Sobre")
         janela.geometry("450x300")
-        info_texto = "Autor: Guilherme Abentroth\nVersão: 10.4\nData: 06/08/2026\n\n" \
+        info_texto = f"Autor: Guilherme Abentroth\nVersão: {VERSAO}\nData: 19/08/2026\n\n" \
                      "1. Alterações em Portal Nacional\n" \
-                     "2. Emissor de Notas Portal Nacional\n" \
+                     "2. Acrescentado Módulo Reforma Tributária\n" \
 
         f_info = ctk.CTkFrame(janela, fg_color="transparent")
         f_info.pack(pady=20, padx=20, fill="both", expand=True)
@@ -541,6 +546,20 @@ class SistemaUnificadoGUI:
         btn_emissor_pn.bind("<Enter>", lambda e: btn_emissor_pn.configure(border_color=("black", "white")))
         btn_emissor_pn.bind("<Leave>", lambda e: btn_emissor_pn.configure(border_color="#2980b9"))
 
+        # === BOTÃO REFORMA TRIBUTÁRIA ===
+        # Versão automatizada do Societário: consulta em lote a situação de
+        # Simples Nacional de uma planilha de empresas.
+        btn_reforma = ctk.CTkButton(
+            f_b, text="⚖️ REFORMA TRIBUTÁRIA",
+            command=self.reforma_tributaria.tela_reforma_tributaria,
+            width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
+            fg_color="#b9770e", hover_color="#9c640c",
+            border_width=2, border_color="#b9770e"
+        )
+        btn_reforma.grid(row=2, column=2, padx=20, pady=20)
+        btn_reforma.bind("<Enter>", lambda e: btn_reforma.configure(border_color=("black", "white")))
+        btn_reforma.bind("<Leave>", lambda e: btn_reforma.configure(border_color="#b9770e"))
+
         ctk.CTkLabel(self.container, text="Powered by: Guilherme Abentroth", font=("Arial", 12)).pack(side=tk.BOTTOM,
                                                                                                       anchor="w",
                                                                                                       padx=20, pady=20)
@@ -614,6 +633,7 @@ class SistemaUnificadoGUI:
         self.txt_log = scrolledtext.ScrolledText(f_log, width=120, height=10, state='disabled', bg="#1e1e1e",
                                                  fg="white", font=("Consolas", 10))
         self.txt_log.pack(padx=10, pady=5, fill="both", expand=True)
+        isolar_scroll_mouse(self.txt_log)
 
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
         f_btns.pack(pady=20)
@@ -720,6 +740,7 @@ class SistemaUnificadoGUI:
         self.txt_log = scrolledtext.ScrolledText(f_log, width=120, height=8, state='disabled', bg="#1e1e1e", fg="white",
                                                  font=("Consolas", 10))
         self.txt_log.pack(padx=10, pady=5, fill="both", expand=True)
+        isolar_scroll_mouse(self.txt_log)
 
         ctk.CTkButton(self.container, text="Voltar", command=self.tela_contabil, fg_color="gray",
                       hover_color="darkgray", width=150, height=40).pack(pady=15)
@@ -773,6 +794,7 @@ class SistemaUnificadoGUI:
         self.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=8, state='disabled', bg="#1e1e1e",
                                                  fg="white", font=("Consolas", 10))
         self.txt_log.pack(padx=10, pady=5, fill="x")
+        isolar_scroll_mouse(self.txt_log)
 
         f_b = ctk.CTkFrame(self.container, fg_color="transparent")
         f_b.pack(pady=20)
@@ -867,6 +889,7 @@ class SistemaUnificadoGUI:
         self.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=15, state='disabled', bg="#1e1e1e",
                                                  fg="white", font=("Consolas", 10))
         self.txt_log.pack(fill="both", expand=True)
+        isolar_scroll_mouse(self.txt_log)
 
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")
         f_btns.pack(pady=20)

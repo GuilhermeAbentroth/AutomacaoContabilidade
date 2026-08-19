@@ -17,6 +17,7 @@ import calendar
 import shutil
 import pandas as pd
 from certificado_utils import CertificadoA1
+from utils import isolar_scroll_mouse
 
 
 class NFSeAPIModulo:
@@ -66,6 +67,22 @@ class NFSeAPIModulo:
         f_cfg.pack(fill="x", padx=40, pady=8)
         ctk.CTkLabel(f_cfg, text="CONFIGURAÇÃO", font=("Arial", 11, "bold"),
                      text_color="#005A9C").pack(pady=4)
+
+        # --- CADASTRO DE CERTIFICADOS: busca por Razão Social ou CNPJ ---
+        # Preenche CNPJ/Certificado/Senha automaticamente a partir do que já
+        # foi usado antes (salvo automaticamente a cada download bem-sucedido).
+        f_busca_cert = ctk.CTkFrame(f_cfg, fg_color="transparent")
+        f_busca_cert.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(f_busca_cert, text="🔍 Buscar Empresa Cadastrada:", font=("Arial", 12, "bold"),
+                     width=180, anchor="w").pack(side="left")
+        self.ent_busca_cert = ctk.CTkEntry(f_busca_cert, placeholder_text="Razão Social ou CNPJ (com ou sem pontuação)...",
+                                           width=340)
+        self.ent_busca_cert.pack(side="left", padx=10)
+        self.ent_busca_cert.bind("<KeyRelease>", self._buscar_certificado_cadastrado)
+
+        self.frame_resultados_cert = ctk.CTkScrollableFrame(f_cfg, height=100)
+        self.frame_resultados_cert.pack(fill="x", padx=20, pady=(0, 6))
+        self._buscar_certificado_cadastrado()
 
         f_cnpj = ctk.CTkFrame(f_cfg, fg_color="transparent")
         f_cnpj.pack(fill="x", padx=20, pady=4)
@@ -137,6 +154,7 @@ class NFSeAPIModulo:
             f_log, height=10, state="disabled",
             bg="#1e1e1e", fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(fill="both", expand=True, padx=10, pady=4)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         # --- BOTÕES ---
         f_btns = ctk.CTkFrame(self.parent.container, fg_color="transparent")
@@ -183,25 +201,21 @@ class NFSeAPIModulo:
             self.ent_pasta.delete(0, tk.END)
             self.ent_pasta.insert(0, p)
 
-    def _detectar_cnpj_certificado(self, pfx, senha):
-        """Abre o .pfx e extrai o CNPJ embutido no certificado e-CNPJ. Retorna None se não achar."""
+    def _abrir_certificado(self, pfx, senha, log_func=None):
+        """Abre o .pfx uma única vez e devolve o CertificadoA1 já carregado (ou None em caso de
+        falha). Centraliza o carregamento pra não reabrir o mesmo .pfx várias vezes por download
+        (antes: uma vez pra detectar nome/CNPJ, outra pra montar a sessão mTLS)."""
         try:
             cert_manager = CertificadoA1(pfx, senha)
-            if not cert_manager.carregar_chaves():
+            if not cert_manager.carregar_chaves(log_func):
                 return None
-            return cert_manager.obter_cnpj()
+            return cert_manager
         except Exception:
             return None
 
-    def _detectar_nome_certificado(self, pfx, senha):
-        """Abre o .pfx e extrai a razão social embutida no CN do certificado e-CNPJ. Retorna '' se não achar."""
-        try:
-            cert_manager = CertificadoA1(pfx, senha)
-            if not cert_manager.carregar_chaves():
-                return ""
-            return cert_manager.obter_nome_razao_social() or ""
-        except Exception:
-            return ""
+    def _validade_iso(self, cert_manager):
+        validade = cert_manager.obter_validade() if cert_manager else None
+        return validade.strftime("%Y-%m-%d") if validade else ""
 
     def _detectar_cnpj_ui(self):
         pfx = self.ent_pfx.get().strip()
@@ -209,14 +223,144 @@ class NFSeAPIModulo:
         if not pfx or not senha:
             messagebox.showwarning("Validação", "Selecione o Certificado e informe a Senha primeiro.")
             return
-        cnpj = self._detectar_cnpj_certificado(pfx, senha)
+        cert_manager = self._abrir_certificado(pfx, senha)
+        cnpj = cert_manager.obter_cnpj() if cert_manager else None
         if cnpj:
             self.ent_cnpj.delete(0, tk.END)
             self.ent_cnpj.insert(0, cnpj)
+            self._registrar_certificado(
+                cnpj, cert_manager.obter_nome_razao_social(), pfx, senha, self._validade_iso(cert_manager))
         else:
             messagebox.showwarning("Não encontrado",
                                     "Não foi possível extrair o CNPJ do certificado.\n"
                                     "Verifique a senha ou informe o CNPJ manualmente (pode ser e-CPF).")
+
+    # ------------------------------------------------------------------
+    # CADASTRO DE CERTIFICADOS — toda vez que um .pfx é aberto com sucesso
+    # (aqui ou em _executar), a razão social/CNPJ (lidos do próprio
+    # certificado), o caminho do arquivo e a senha usada ficam salvos
+    # nesta tabela — assim da próxima vez basta buscar por nome ou CNPJ
+    # em vez de procurar o arquivo e digitar a senha de novo.
+    # ------------------------------------------------------------------
+    def _db_path_certs(self):
+        return self.parent.configuracoes.get(
+            "caminho_banco", os.path.join(self.parent.pasta_exe, "dados_escritorio.db"))
+
+    def _criar_tabela_certificados(self, conn):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS certificados_cadastrados (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cnpj TEXT UNIQUE,
+                razao_social TEXT,
+                caminho_pfx TEXT,
+                senha_pfx TEXT,
+                validade TEXT,
+                dt_atualizacao TEXT
+            )
+        """)
+
+    def _registrar_certificado(self, cnpj, razao_social, caminho_pfx, senha_pfx, validade_iso):
+        cnpj = "".join(filter(str.isdigit, cnpj or ""))
+        if not cnpj:
+            return
+        try:
+            conn = sqlite3.connect(self._db_path_certs(), timeout=10)
+            self._criar_tabela_certificados(conn)
+            conn.execute("""
+                INSERT INTO certificados_cadastrados
+                    (cnpj, razao_social, caminho_pfx, senha_pfx, validade, dt_atualizacao)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cnpj) DO UPDATE SET
+                    razao_social=excluded.razao_social,
+                    caminho_pfx=excluded.caminho_pfx,
+                    senha_pfx=excluded.senha_pfx,
+                    validade=excluded.validade,
+                    dt_atualizacao=excluded.dt_atualizacao
+            """, (cnpj, (razao_social or "").strip(), caminho_pfx or "", senha_pfx or "",
+                  validade_iso or "", datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self._log(f"⚠️ Não foi possível salvar o certificado no cadastro: {e}", "erro")
+
+    def _listar_certificados_cadastrados(self):
+        try:
+            conn = sqlite3.connect(self._db_path_certs(), timeout=10)
+            self._criar_tabela_certificados(conn)
+            linhas = conn.execute(
+                "SELECT cnpj, razao_social, caminho_pfx, senha_pfx, validade "
+                "FROM certificados_cadastrados ORDER BY razao_social").fetchall()
+            conn.close()
+            return linhas
+        except Exception:
+            return []
+
+    def _filtrar_certificados(self, termo):
+        """Busca por Razão Social (substring, sem diferenciar maiúsc./minúsc.) ou por CNPJ,
+        aceitando o CNPJ digitado com ou sem pontuação. Termo vazio devolve todos os
+        cadastrados — a lista fica visível o tempo todo e só é reduzida conforme se digita."""
+        todos = self._listar_certificados_cadastrados()
+        termo = (termo or "").strip()
+        if not termo:
+            return todos
+
+        termo_nome = termo.upper()
+        termo_digitos = "".join(filter(str.isdigit, termo))
+        resultado = []
+        for cnpj, nome, caminho, senha, validade in todos:
+            nome = nome or ""
+            achou_nome = termo_nome in nome.upper()
+            achou_cnpj = bool(termo_digitos) and termo_digitos in cnpj
+            if achou_nome or achou_cnpj:
+                resultado.append((cnpj, nome, caminho, senha, validade))
+        return resultado
+
+    def _buscar_certificado_cadastrado(self, event=None):
+        termo = self.ent_busca_cert.get().strip()
+        for w in self.frame_resultados_cert.winfo_children():
+            w.destroy()
+        resultados = self._filtrar_certificados(termo)
+        if not resultados:
+            texto_vazio = ("Nenhum certificado cadastrado ainda — ele é salvo automaticamente na "
+                           "primeira vez que você baixar notas com um certificado." if not termo
+                           else "Nenhum certificado cadastrado encontrado.")
+            ctk.CTkLabel(self.frame_resultados_cert, text=texto_vazio,
+                        text_color="gray", font=("Arial", 10)).pack(anchor="w", padx=5, pady=2)
+            return
+
+        hoje = date.today()
+        for cnpj, nome, caminho, senha, validade in resultados:
+            vencido = True
+            if validade:
+                try:
+                    vencido = datetime.strptime(validade[:10], "%Y-%m-%d").date() < hoje
+                except Exception:
+                    vencido = True
+            bolinha = "🔴" if vencido else "🟢"
+            if validade:
+                sufixo = f" ({'venceu em' if vencido else 'válido até'} {self._fmt_data_br(validade)})"
+            else:
+                sufixo = " (validade desconhecida)"
+            texto = f"{bolinha} {nome or '(sem nome)'} — {self._fmt_doc(cnpj)}{sufixo}"
+            ctk.CTkButton(
+                self.frame_resultados_cert, text=texto, anchor="w", fg_color="transparent",
+                hover_color="#3a3a3a", height=26, font=("Arial", 11),
+                command=lambda c=cnpj, n=nome, p=caminho, s=senha: self._selecionar_certificado_cadastrado(c, n, p, s)
+            ).pack(fill="x", pady=1)
+
+    def _selecionar_certificado_cadastrado(self, cnpj, nome, caminho, senha):
+        self.ent_cnpj.delete(0, tk.END)
+        self.ent_cnpj.insert(0, cnpj)
+        self.ent_pfx.delete(0, tk.END)
+        self.ent_pfx.insert(0, caminho or "")
+        self.ent_senha.delete(0, tk.END)
+        self.ent_senha.insert(0, senha or "")
+        self.ent_busca_cert.delete(0, tk.END)
+        self.ent_busca_cert.insert(0, nome or cnpj)
+        self._buscar_certificado_cadastrado()
+        self._log(f"📇 Certificado carregado do cadastro: {nome or cnpj} "
+                  f"(caminho e senha preenchidos — troque o arquivo acima se o certificado tiver sido renovado).",
+                  "info")
 
     def _parar_processo(self):
         self._parar = True
@@ -248,7 +392,8 @@ class NFSeAPIModulo:
 
         if not cnpj and pfx and senha:
             self._log("CNPJ não informado, tentando detectar a partir do certificado...", "info")
-            cnpj_detectado = self._detectar_cnpj_certificado(pfx, senha)
+            cert_detectado = self._abrir_certificado(pfx, senha)
+            cnpj_detectado = cert_detectado.obter_cnpj() if cert_detectado else None
             if cnpj_detectado:
                 cnpj = cnpj_detectado
                 self.ent_cnpj.delete(0, tk.END)
@@ -273,8 +418,26 @@ class NFSeAPIModulo:
     def _executar(self, cnpj, pfx, senha, pasta, dt_ini, dt_fim, tipo):
         try:
             self._log("Carregando certificado digital...", "info")
-            nome_empresa_cert = self._detectar_nome_certificado(pfx, senha)
-            if not self._criar_sessao_mtls(pfx, senha):
+            cert_manager = self._abrir_certificado(pfx, senha, self._log)
+            if cert_manager is None:
+                self._log("Erro: falha ao abrir o certificado digital (senha incorreta ou arquivo inválido).", "erro")
+                return
+
+            nome_empresa_cert = cert_manager.obter_nome_razao_social() or ""
+            cnpj_cert = cert_manager.obter_cnpj() or cnpj
+            validade = cert_manager.obter_validade()
+            self._registrar_certificado(cnpj_cert, nome_empresa_cert, pfx, senha, self._validade_iso(cert_manager))
+
+            if validade:
+                hoje = date.today()
+                dias_restantes = (validade.date() - hoje).days
+                if dias_restantes < 0:
+                    self._log(f"⚠️ Atenção: certificado digital VENCIDO em {validade.date().strftime('%d/%m/%Y')}.", "erro")
+                elif dias_restantes <= 30:
+                    self._log(f"⚠️ Certificado digital vence em {validade.date().strftime('%d/%m/%Y')} "
+                             f"({dias_restantes} dia(s)) — considere renovar em breve.", "info")
+
+            if not self._criar_sessao_mtls(pfx, senha, cert_manager=cert_manager):
                 return
             self._log("✅ Certificado carregado. Sessão mTLS criada.", "sucesso")
 
@@ -298,11 +461,14 @@ class NFSeAPIModulo:
     # ------------------------------------------------------------------
     # mTLS
     # ------------------------------------------------------------------
-    def _criar_sessao_mtls(self, pfx_path, senha):
+    def _criar_sessao_mtls(self, pfx_path, senha, cert_manager=None):
+        """Se `cert_manager` já vier carregado (fluxo normal de _executar, que já abriu o
+        .pfx pra detectar nome/CNPJ/validade), reaproveita em vez de reabrir o arquivo."""
         try:
-            cert_manager = CertificadoA1(pfx_path, senha)
-            if not cert_manager.carregar_chaves(self._log):
-                return False
+            if cert_manager is None:
+                cert_manager = self._abrir_certificado(pfx_path, senha, self._log)
+                if cert_manager is None:
+                    return False
 
             cert_pem = cert_manager.obter_certificado_pem()
             key_pem = cert_manager.obter_chave_privada_pem()

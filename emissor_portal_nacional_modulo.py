@@ -18,6 +18,7 @@ import pandas as pd
 
 from certificado_utils import CertificadoA1
 from betha_manual_modulo import EmissorBethaManual
+from utils import isolar_scroll_mouse
 
 
 class EmissorPortalNacional(EmissorBethaManual):
@@ -191,6 +192,7 @@ class EmissorPortalNacional(EmissorBethaManual):
         self.parent.txt_log = scrolledtext.ScrolledText(f_log, width=120, height=14, state='disabled',
                                                          bg="#1e1e1e", fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(padx=15, pady=5, fill="both", expand=True)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         # --- CONTROLES ---
         f_btns = ctk.CTkFrame(self.parent.container, fg_color="transparent")

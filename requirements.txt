@@ -1,0 +1,28 @@
+# Dependências do Automação Abentroth.
+#
+# As versões abaixo com "==" foram conferidas no ambiente local (pip freeze);
+# as demais (sem versão fixa) não estavam instaladas nesse ambiente de
+# checagem — antes do primeiro build automatizado, rode "pip freeze" na
+# máquina onde o build local funciona hoje e substitua as linhas sem "=="
+# pelas versões reais usadas lá, para o build da CI ficar idêntico ao local.
+customtkinter==6.0.0
+pandas
+numpy
+requests==2.34.2
+cryptography==49.0.0
+certifi==2026.7.22
+reportlab
+qrcode
+xlsxwriter==3.2.9
+openpyxl==3.1.5
+pillow==12.3.0
+lxml==6.0.2
+signxml
+pypdf
+pdfplumber==0.11.10
+pymupdf
+playwright
+JPype1
+tabula-py
+
+pyinstaller

@@ -12,6 +12,7 @@ from signxml import XMLSigner
 from certificado_utils import CertificadoA1
 from betha_database import BethaDatabase
 from monitor_notas import MonitorNotas, TelaMonitor
+from utils import isolar_scroll_mouse
 
 # Silencia avisos técnicos do certificado
 warnings.filterwarnings("ignore", category=UserWarning, message=".*PKCS#12 bundle could not be parsed.*")
@@ -244,6 +245,7 @@ class EmissorBethaManual:
         self.parent.txt_log = scrolledtext.ScrolledText(f_log, width=120, height=6, state='disabled', bg="#1e1e1e",
                                                         fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(padx=15, pady=2, fill="both", expand=True)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         # --- CONTROLES DE SAÍDA ---
         f_btns = ctk.CTkFrame(self.parent.container, fg_color="transparent")

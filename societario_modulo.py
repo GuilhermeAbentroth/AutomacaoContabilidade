@@ -7,6 +7,7 @@ import json
 import re
 import webbrowser
 from datetime import datetime
+from utils import isolar_scroll_mouse
 
 
 class SocietarioModulo:
@@ -670,6 +671,7 @@ class SocietarioModulo:
                 bg="#1e1e1e", fg="#00ff88",
                 font=("Consolas", 9), state="normal")
             txt.pack(fill="x", padx=8, pady=8)
+            isolar_scroll_mouse(txt)
             txt.insert("1.0", json.dumps(self._dados, ensure_ascii=False, indent=2))
             txt.configure(state="disabled")
             self._json_visivel = True
