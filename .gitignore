@@ -14,6 +14,17 @@
 /arquivos_pdf/*
 !/arquivos_pdf/.gitkeep
 
+# Dados reais de clientes gerados/usados pelo app em produção — nunca devem
+# ir pro repositório (nem privado): banco de dados, notas emitidas/baixadas
+# (PDF+XML) e a planilha de log de eventos. modelo_notas.xlsx é diferente
+# disso — é um template vazio usado pelo código (gerar_planilha.py), esse
+# continua versionado normalmente.
+dados_escritorio.db
+dados_escritorio.db-journal
+NFSe_PDFs/
+REINF/
+log_eventos_automacao.xlsx
+
 # Ignorar o arquivo real de senhas e licenças
 credenciais.py
 
