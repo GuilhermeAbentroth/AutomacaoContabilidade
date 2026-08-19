@@ -468,17 +468,18 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
-            fg_color="#f39200",
-            hover_color="#f39200",  # Trava a cor de fundo no hover
+            fg_color="#f1c40f",
+            hover_color="#f1c40f",  # Trava a cor de fundo no hover
+            text_color="#1a1a1a",  # Amarelo é claro demais p/ texto branco padrão do CTkButton
             border_width=2,
-            border_color="#f39200"  # Borda invisível inicial para não dar "solavanco" no layout
+            border_color="#f1c40f"  # Borda invisível inicial para não dar "solavanco" no layout
         )
         # 2. Posiciona o botão na Grid
         btn_portal.grid(row=0, column=2, padx=20, pady=20)
 
         # 3. Adiciona os eventos de detecção do mouse (Preto para tema Claro, Branco para tema Escuro)
         btn_portal.bind("<Enter>", lambda e: btn_portal.configure(border_color=("black", "white")))
-        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f39200"))
+        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f1c40f"))
 
         btn_emissor = ctk.CTkButton(
             f_b,

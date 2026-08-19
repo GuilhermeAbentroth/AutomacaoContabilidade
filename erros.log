@@ -142,3 +142,17 @@ Traceback (most recent call last):
     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 _tkinter.TclError: invalid command name ".!ctkframe.!canvas.!ctkscrollableframe.!ctkframe12.!ctkframe.!ctklabel.!label"
 
+
+[2026-08-13 20:33:16.304644]
+Traceback (most recent call last):
+  File "C:\Users\guilh\AppData\Local\Programs\Python\Python313\Lib\tkinter\__init__.py", line 2068, in __call__
+    return self.func(*args)
+           ~~~~~~~~~^^^^^^^
+  File "C:\Users\guilh\AppData\Local\Programs\Python\Python313\Lib\tkinter\__init__.py", line 862, in callit
+    func(*args)
+    ~~~~^^^^^^^
+  File "C:\Users\guilh\Desktop\Automação Abentroth\betha_manual_modulo.py", line 779, in <lambda>
+    f"Erro inesperado: {e}", "erro"))
+                        ^
+NameError: cannot access free variable 'e' where it is not associated with a value in enclosing scope. Did you mean: 're'?
+

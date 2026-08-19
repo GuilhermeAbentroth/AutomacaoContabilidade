@@ -8,4 +8,4 @@
 # (ex.: tag "v10.6" -> VERSAO = "10.6"). Editar aqui só importa para rodar
 # a partir do código-fonte (sem build), fora do fluxo normal de release.
 # =========================================================================
-VERSAO = "10.5"
+VERSAO = "10.6"
