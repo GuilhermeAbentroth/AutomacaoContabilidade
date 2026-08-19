@@ -11,6 +11,7 @@ import shutil
 import re
 import pandas as pd
 from pypdf import PdfReader
+from utils import isolar_scroll_mouse
 
 
 class PortalNacionalModulo:
@@ -645,6 +646,7 @@ class PortalNacionalModulo:
         self.parent.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=15, state='disabled',
                                                         bg="#1e1e1e", fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(fill="both", expand=True)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         # Botões de Ação
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")

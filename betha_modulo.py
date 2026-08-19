@@ -2,6 +2,7 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import scrolledtext, filedialog
 import threading
+from utils import isolar_scroll_mouse
 
 
 class EmissorBethaModulo:
@@ -67,6 +68,7 @@ class EmissorBethaModulo:
         self.parent.txt_log = scrolledtext.ScrolledText(f_log_area, width=125, height=12, state='disabled',
                                                         bg="#1e1e1e", fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(fill="both", expand=True)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         # --- BOTÕES DE AÇÃO ---
         f_btns = ctk.CTkFrame(self.container, fg_color="transparent")

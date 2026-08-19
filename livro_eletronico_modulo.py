@@ -10,6 +10,7 @@ from collections import Counter
 from datetime import datetime
 
 import pdfplumber
+from utils import isolar_scroll_mouse
 
 
 class LivroEletronicoModulo:
@@ -98,6 +99,7 @@ class LivroEletronicoModulo:
             f_log, height=16, state="disabled",
             bg="#1e1e1e", fg="white", font=("Consolas", 10))
         self.parent.txt_log.pack(fill="both", expand=True, padx=10, pady=4)
+        isolar_scroll_mouse(self.parent.txt_log)
 
         f_btns = ctk.CTkFrame(self.parent.container, fg_color="transparent")
         f_btns.pack(pady=10)

@@ -13,6 +13,7 @@ class CertificadoA1:
         self.certificado_publico = None
         self.cnpj = None
         self.nome_razao_social = None
+        self.validade = None
 
     def carregar_chaves(self, log_func=None):
         """
@@ -42,6 +43,14 @@ class CertificadoA1:
                 if m:
                     self.cnpj = m.group(1)
                     self.nome_razao_social = cn_valor[:m.start()].strip()
+
+            # Data de validade (notAfter) do certificado — usa a API timezone-aware
+            # (not_valid_after_utc, cryptography>=42) quando disponível, com fallback
+            # pra not_valid_after (naive) em versões mais antigas da lib.
+            try:
+                self.validade = certificate.not_valid_after_utc
+            except AttributeError:
+                self.validade = certificate.not_valid_after
 
             if log_func:
                 log_func(f"Cofre aberto com sucesso! Certificado carregado.", "sucesso")
@@ -82,3 +91,7 @@ class CertificadoA1:
     def obter_nome_razao_social(self):
         """Retorna a razão social extraída do CN do certificado (ou None se não encontrada)"""
         return self.nome_razao_social
+
+    def obter_validade(self):
+        """Retorna a data de validade (notAfter) do certificado como datetime, ou None."""
+        return self.validade
