@@ -468,18 +468,17 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
-            fg_color="#f1c40f",
-            hover_color="#f1c40f",  # Trava a cor de fundo no hover
-            text_color="#1a1a1a",  # Amarelo é claro demais p/ texto branco padrão do CTkButton
+            fg_color="#f39200",
+            hover_color="#f39200",  # Trava a cor de fundo no hover
             border_width=2,
-            border_color="#f1c40f"  # Borda invisível inicial para não dar "solavanco" no layout
+            border_color="#f39200"  # Borda invisível inicial para não dar "solavanco" no layout
         )
         # 2. Posiciona o botão na Grid
         btn_portal.grid(row=0, column=2, padx=20, pady=20)
 
         # 3. Adiciona os eventos de detecção do mouse (Preto para tema Claro, Branco para tema Escuro)
         btn_portal.bind("<Enter>", lambda e: btn_portal.configure(border_color=("black", "white")))
-        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f1c40f"))
+        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f39200"))
 
         btn_emissor = ctk.CTkButton(
             f_b,
@@ -935,7 +934,17 @@ class SistemaUnificadoGUI:
                 f.write(f"\n[{datetime.now()}]\n{erro_texto}\n")
         except Exception:
             pass
-        messagebox.showerror("Erro inesperado", f"{exc_value}\n\nDetalhes salvos em erros.log")
+
+        # Callback tardio do Tk chegando depois que a janela já foi fechada (ex.: durante
+        # o fechamento para trocar de versão) — não tem mais janela pra mostrar erro, e
+        # tentar mesmo assim é o que produzia a tela feia de "Unhandled exception in
+        # script" (o showerror seguinte também falhava, virando exceção não tratada).
+        if not self.root.winfo_exists():
+            return
+        try:
+            messagebox.showerror("Erro inesperado", f"{exc_value}\n\nDetalhes salvos em erros.log")
+        except Exception:
+            pass
 
 
 def tratar_erro_thread(args):

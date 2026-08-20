@@ -221,9 +221,19 @@ class AtualizadorModulo:
                 bat_path = os.path.join(tempfile.gettempdir(), f"_abentroth_update_{os.getpid()}.bat")
                 self._gerar_bat_atualizacao(bat_path, pasta_instalacao, pasta_novo, nome_exe, pasta_temp)
 
-                prog.destroy()
-                subprocess.Popen(["cmd", "/c", "start", "", bat_path], shell=False)
-                self.parent.root.destroy()
+                # Fecha a janela e dispara o .bat na THREAD PRINCIPAL, via after(0, ...),
+                # em vez de chamar .destroy() direto daqui (thread em background).
+                # Tkinter não é thread-safe: destruir a janela a partir de outra thread
+                # corre contra o loop de eventos do Tk, que ainda tem callbacks
+                # agendados (ex.: o polling de dimensão da janela do customtkinter) —
+                # esses disparam contra uma janela já parcialmente destruída, geram um
+                # TclError não tratado, e derrubam o app com uma tela de erro feia.
+                def finalizar():
+                    prog.destroy()
+                    subprocess.Popen(["cmd", "/c", "start", "", bat_path], shell=False)
+                    self.parent.root.destroy()
+
+                self.parent.root.after(0, finalizar)
 
             except Exception as e:
                 self.parent.root.after(0, lambda: erro(
