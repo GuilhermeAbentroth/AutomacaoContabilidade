@@ -19,8 +19,7 @@
 # (PDF+XML) e a planilha de log de eventos. modelo_notas.xlsx é diferente
 # disso — é um template vazio usado pelo código (gerar_planilha.py), esse
 # continua versionado normalmente.
-dados_escritorio.db
-dados_escritorio.db-journal
+dados_escritorio.db*
 NFSe_PDFs/
 REINF/
 log_eventos_automacao.xlsx
