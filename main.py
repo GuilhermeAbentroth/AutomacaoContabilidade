@@ -188,8 +188,14 @@ class SistemaUnificadoGUI:
         novo_modo = "Light" if modo_atual == "Dark" else "Dark"
         ctk.set_appearance_mode(novo_modo)
         self.salvar_config("tema", novo_modo)
-        # Atualiza o texto do botão
-        self.mostrar_menu_inicial()
+        # Reconstrói o menu (pra atualizar o texto do botão) num passo adiado em vez de
+        # direto aqui: o próprio clique nesse botão deixa um focus_set() pendente do Tk
+        # agendado pra rodar logo em seguida — se destruíssemos o botão (via
+        # mostrar_menu_inicial -> limpar_tela) ainda dentro do callback do clique, esse
+        # focus_set atrasado dispara contra um widget que já não existe mais
+        # ("bad window path name"). Com after(0, ...) o focus_set pendente roda primeiro,
+        # contra o widget ainda vivo, e só depois a tela é reconstruída.
+        self.root.after(0, self.mostrar_menu_inicial)
 
     def abrir_tela_licenca(self):
         janela = ctk.CTkToplevel(self.root)
@@ -431,16 +437,16 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
-            fg_color="#228B22",
-            hover_color="#228B22",  # Trava o fundo verde
+            fg_color="#1f538d",
+            hover_color="#14375e",
             border_width=2,
-            border_color="#228B22"  # Borda invisível inicial
+            border_color="#1f538d"  # Borda invisível inicial
         )
         btn_fiscal.grid(row=0, column=0, padx=20, pady=20)
 
         # Eventos de Hover do Fiscal
         btn_fiscal.bind("<Enter>", lambda e: btn_fiscal.configure(border_color=("black", "white")))
-        btn_fiscal.bind("<Leave>", lambda e: btn_fiscal.configure(border_color="#228B22"))
+        btn_fiscal.bind("<Leave>", lambda e: btn_fiscal.configure(border_color="#1f538d"))
 
         # === BOTÃO CONTÁBIL ===
         btn_contabil = ctk.CTkButton(
@@ -450,16 +456,16 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
-            fg_color="#005A9C",
-            hover_color="#005A9C",  # Trava o fundo azul
+            fg_color="#1f538d",
+            hover_color="#14375e",
             border_width=2,
-            border_color="#005A9C"  # Borda invisível inicial
+            border_color="#1f538d"  # Borda invisível inicial
         )
         btn_contabil.grid(row=0, column=1, padx=20, pady=20)
 
         # Eventos de Hover do Contábil
         btn_contabil.bind("<Enter>", lambda e: btn_contabil.configure(border_color=("black", "white")))
-        btn_contabil.bind("<Leave>", lambda e: btn_contabil.configure(border_color="#005A9C"))
+        btn_contabil.bind("<Leave>", lambda e: btn_contabil.configure(border_color="#1f538d"))
 
         btn_portal = ctk.CTkButton(
             f_b,
@@ -468,17 +474,17 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 20, "bold"),
-            fg_color="#f39200",
-            hover_color="#f39200",  # Trava a cor de fundo no hover
+            fg_color="#1f538d",
+            hover_color="#14375e",
             border_width=2,
-            border_color="#f39200"  # Borda invisível inicial para não dar "solavanco" no layout
+            border_color="#1f538d"  # Borda invisível inicial para não dar "solavanco" no layout
         )
         # 2. Posiciona o botão na Grid
         btn_portal.grid(row=0, column=2, padx=20, pady=20)
 
         # 3. Adiciona os eventos de detecção do mouse (Preto para tema Claro, Branco para tema Escuro)
         btn_portal.bind("<Enter>", lambda e: btn_portal.configure(border_color=("black", "white")))
-        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#f39200"))
+        btn_portal.bind("<Leave>", lambda e: btn_portal.configure(border_color="#1f538d"))
 
         btn_emissor = ctk.CTkButton(
             f_b,
@@ -487,49 +493,49 @@ class SistemaUnificadoGUI:
             width=btn_w,
             height=btn_h,
             font=("Arial", 16, "bold"),
-            fg_color="#27ae60",
-            hover_color="#27ae60",  # Trava o fundo verde original do emissor
+            fg_color="#1f538d",
+            hover_color="#14375e",
             border_width=2,
-            border_color="#27ae60"  # Borda invisível inicial para manter estabilidade
+            border_color="#1f538d"  # Borda invisível inicial para manter estabilidade
         )
         btn_emissor.grid(row=1, column=0, padx=20, pady=20)
 
         # Eventos de Hover do Emissor NFSE
         btn_emissor.bind("<Enter>", lambda e: btn_emissor.configure(border_color=("black", "white")))
-        btn_emissor.bind("<Leave>", lambda e: btn_emissor.configure(border_color="#27ae60"))
+        btn_emissor.bind("<Leave>", lambda e: btn_emissor.configure(border_color="#1f538d"))
 
         btn_soc = ctk.CTkButton(
             f_b, text="🏢 SOCIETÁRIO",
             command=self.societario.tela_societario,
             width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
-            fg_color="#8e44ad", hover_color="#6c3483",
-            border_width=2, border_color="#8e44ad"
+            fg_color="#1f538d", hover_color="#14375e",
+            border_width=2, border_color="#1f538d"
         )
         btn_soc.grid(row=1, column=1, padx=20, pady=20)
         btn_soc.bind("<Enter>", lambda e: btn_soc.configure(border_color=("black", "white")))
-        btn_soc.bind("<Leave>", lambda e: btn_soc.configure(border_color="#8e44ad"))
+        btn_soc.bind("<Leave>", lambda e: btn_soc.configure(border_color="#1f538d"))
 
         btn_livro = ctk.CTkButton(
             f_b, text="📕 LIVRO ELETRÔNICO",
             command=self.livro_eletronico.tela_livro,
             width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
-            fg_color="#6c3483", hover_color="#512e5f",
-            border_width=2, border_color="#6c3483"
+            fg_color="#1f538d", hover_color="#14375e",
+            border_width=2, border_color="#1f538d"
         )
         btn_livro.grid(row=1, column=2, padx=20, pady=20)
         btn_livro.bind("<Enter>", lambda e: btn_livro.configure(border_color=("black", "white")))
-        btn_livro.bind("<Leave>", lambda e: btn_livro.configure(border_color="#6c3483"))
+        btn_livro.bind("<Leave>", lambda e: btn_livro.configure(border_color="#1f538d"))
 
         btn_pessoal = ctk.CTkButton(
             f_b, text="👥 PESSOAL",
             command=self.pessoal.abrir,
             width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
-            fg_color="#16a085", hover_color="#12876f",
-            border_width=2, border_color="#16a085"
+            fg_color="#1f538d", hover_color="#14375e",
+            border_width=2, border_color="#1f538d"
         )
         btn_pessoal.grid(row=2, column=0, padx=20, pady=20)
         btn_pessoal.bind("<Enter>", lambda e: btn_pessoal.configure(border_color=("black", "white")))
-        btn_pessoal.bind("<Leave>", lambda e: btn_pessoal.configure(border_color="#16a085"))
+        btn_pessoal.bind("<Leave>", lambda e: btn_pessoal.configure(border_color="#1f538d"))
 
         # === BOTÃO EMISSOR PORTAL NACIONAL ===
         # Emissão direto pela API oficial do Emissor Nacional (SEFIN),
@@ -539,12 +545,12 @@ class SistemaUnificadoGUI:
             f_b, text="EMISSOR PORTAL NACIONAL",
             command=lambda: self.verificar_acesso_modulo(self.emissor_pn.tela_escolha_emissor_pn),
             width=btn_w, height=btn_h, font=("Arial", 14, "bold"),
-            fg_color="#2980b9", hover_color="#2980b9",
-            border_width=2, border_color="#2980b9"
+            fg_color="#1f538d", hover_color="#14375e",
+            border_width=2, border_color="#1f538d"
         )
         btn_emissor_pn.grid(row=2, column=1, padx=20, pady=20)
         btn_emissor_pn.bind("<Enter>", lambda e: btn_emissor_pn.configure(border_color=("black", "white")))
-        btn_emissor_pn.bind("<Leave>", lambda e: btn_emissor_pn.configure(border_color="#2980b9"))
+        btn_emissor_pn.bind("<Leave>", lambda e: btn_emissor_pn.configure(border_color="#1f538d"))
 
         # === BOTÃO REFORMA TRIBUTÁRIA ===
         # Versão automatizada do Societário: consulta em lote a situação de
@@ -553,12 +559,12 @@ class SistemaUnificadoGUI:
             f_b, text="⚖️ REFORMA TRIBUTÁRIA",
             command=self.reforma_tributaria.tela_reforma_tributaria,
             width=btn_w, height=btn_h, font=("Arial", 16, "bold"),
-            fg_color="#b9770e", hover_color="#9c640c",
-            border_width=2, border_color="#b9770e"
+            fg_color="#1f538d", hover_color="#14375e",
+            border_width=2, border_color="#1f538d"
         )
         btn_reforma.grid(row=2, column=2, padx=20, pady=20)
         btn_reforma.bind("<Enter>", lambda e: btn_reforma.configure(border_color=("black", "white")))
-        btn_reforma.bind("<Leave>", lambda e: btn_reforma.configure(border_color="#b9770e"))
+        btn_reforma.bind("<Leave>", lambda e: btn_reforma.configure(border_color="#1f538d"))
 
         ctk.CTkLabel(self.container, text="Powered by: Guilherme Abentroth", font=("Arial", 12)).pack(side=tk.BOTTOM,
                                                                                                       anchor="w",
